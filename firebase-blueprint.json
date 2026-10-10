@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated user profile in Touch_AI",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "User avatar photo URL"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Account creation timestamp"
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Most recent login timestamp"
+        }
+      },
+      "required": ["userId", "email"]
+    },
+    "MeasurementRecord": {
+      "title": "MeasurementRecord",
+      "description": "Saved acoustic touch measurement record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique measurement ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID"
+        },
+        "objectName": {
+          "type": "string",
+          "description": "Name of the measured object or surface"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["texture", "hardness", "density"],
+          "description": "Contact measurement mode"
+        },
+        "score": {
+          "type": "number",
+          "description": "Calibrated 1.0 to 10.0 score"
+        },
+        "descriptor": {
+          "type": "string",
+          "description": "Tactile descriptor"
+        },
+        "summary": {
+          "type": "string",
+          "description": "Acoustic spectrum summary"
+        },
+        "dominantHarmonic": {
+          "type": "string",
+          "description": "Peak resonant frequency in Hz"
+        },
+        "dampingRatio": {
+          "type": "string",
+          "description": "Vibration damping ratio"
+        },
+        "confidencePercent": {
+          "type": "number",
+          "description": "Measurement confidence level"
+        },
+        "avgDb": {
+          "type": "number",
+          "description": "Average decibels measured"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Measurement time string"
+        },
+        "storageType": {
+          "type": "string",
+          "enum": ["phone", "cloud"],
+          "description": "Storage destination"
+        },
+        "targetFolder": {
+          "type": "string",
+          "description": "Destination folder or cloud path"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Record creation ISO timestamp"
+        }
+      },
+      "required": ["id", "userId", "objectName", "mode", "score"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private user profile document"
+    },
+    "/users/{userId}/measurements/{measurementId}": {
+      "schema": "MeasurementRecord",
+      "description": "User's acoustic surface touch measurements collection"
+    }
+  }
+}

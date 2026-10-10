@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Validation for User profile
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email'])
+        && data.userId is string
+        && data.email is string;
+    }
+
+    // Validation for Measurement records
+    function isValidMeasurement(data) {
+      return data.keys().hasAll(['id', 'userId', 'objectName', 'mode', 'score'])
+        && data.id is string
+        && data.userId is string
+        && data.objectName is string
+        && data.objectName.size() > 0
+        && data.mode in ['texture', 'hardness', 'density']
+        && data.score is number
+        && data.score >= 0.0 && data.score <= 10.0;
+    }
+
+    // User profile document
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      // User's private measurements subcollection
+      match /measurements/{measurementId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.userId == userId
+          && isValidMeasurement(request.resource.data);
+        allow update: if isOwner(userId)
+          && request.resource.data.userId == userId
+          && isValidMeasurement(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Deny all other access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Touch_AI",
+  "description": "Touch acoustic surface measurement app for analyzing texture, hardness, and density through microphone case contact and Fourier spectrum analysis.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
