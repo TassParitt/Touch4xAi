@@ -74,12 +74,12 @@ export const TouchxAiLogo: React.FC<TouchxAiLogoProps> = ({
       <div className="flex flex-col text-left leading-none">
         <div className="flex items-center gap-1.5">
           <span className="font-extrabold text-base tracking-tight text-slate-950 font-sans">
-            Touch<span className="text-teal-600">x</span>Ai
+            Touch<span className="text-teal-600 font-black">4x</span>Ai
           </span>
         </div>
         {showTagline && (
-          <span className="text-[9px] font-mono font-bold tracking-wider text-slate-500 uppercase mt-0.5">
-            SMART CONTACT METROLOGY
+          <span className="text-[9px] font-mono font-bold tracking-wider text-teal-700 uppercase mt-0.5">
+            SMART TOUCH FOR TRAINING AI
           </span>
         )}
       </div>

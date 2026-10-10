@@ -50,7 +50,7 @@ export interface ImuMetrics {
   slidingStatus?: 'optimal' | 'too_slow' | 'too_fast' | 'steady';
   directionAngleDeg?: number;
   sensorSampleCount?: number;
-  slidePassCount?: number; // e.g. 5 passes (left-right-left-right-left)
+  slidePassCount?: number; // e.g. 3 passes back and forth
   continuousContactMaintained?: boolean;
   accelerometer?: { x: number; y: number; z: number };
   gyroscope?: { alpha: number; beta: number; gamma: number };

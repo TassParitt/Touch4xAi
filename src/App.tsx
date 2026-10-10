@@ -161,11 +161,11 @@ export default function App() {
     }
   }, [savedRecords]);
 
-  // Concise one-sentence measuring guides
+  // Concise user-friendly measuring guides
   const measurementGuides = {
-    texture: 'Slide the microphone port across the object surface 5+ times.',
-    hardness: 'Tap the microphone port firmly against the object surface 5 times.',
-    density: 'Hold the microphone port against the object for 5+ seconds while vibrating.',
+    texture: 'Slide the smartphone back and forth 3 times across the surface.',
+    hardness: 'Tap the microphone port firmly against the surface 3 times.',
+    density: 'Hold the smartphone microphone against the surface for 6 seconds while vibrating.',
   };
 
   // Measurement finished on Screen 2 -> Automatically bring to Screen 3
@@ -508,8 +508,8 @@ export default function App() {
                   {analysisResult.mode} Measurement
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-700">
-                    Mode: {versionMode}
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                    Smart Touch
                   </span>
                   <span className="font-mono text-[11px] text-slate-400">
                     {analysisResult.timestamp}
@@ -533,8 +533,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* 2. V6PRO RELATIVE DIFFERENTIAL SCALE (-100% ⟷ 0% ⟷ +100%) */}
-            {versionMode === 'V6Pro' && analysisResult.differentialResult ? (
+            {/* 2. RELATIVE DIFFERENTIAL SCALE (-100% ⟷ 0% ⟷ +100%) */}
+            {analysisResult.differentialResult ? (
               <RelativeScaleBar
                 mode={analysisResult.mode}
                 differential={analysisResult.differentialResult}
@@ -553,57 +553,6 @@ export default function App() {
               <span>Compare Now (Primary: {analysisResult.objectName})</span>
             </button>
 
-            {/* 4. LEGACY V5 1-10 COLOR BAR CARD (Rendered in V5 Mode or as secondary reference) */}
-            {versionMode === 'V5' && (
-              <div className="w-full bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs text-left space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-                      V5 ABSOLUTE SCORE (1-10)
-                    </span>
-                    <span className="text-sm font-semibold text-slate-800 mt-0.5 inline-block">
-                      {analysisResult.descriptor}
-                    </span>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="flex items-baseline gap-1 justify-end">
-                      <span className="text-4xl font-black text-slate-950 font-mono tracking-tight tabular-nums">
-                        {analysisResult.score.toFixed(1)}
-                      </span>
-                      <span className="text-sm font-bold text-slate-400 font-mono">/ 10</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 1-10 Color Bar */}
-                <div className="space-y-2 pt-1">
-                  <div
-                    className="relative w-full h-7 rounded-2xl overflow-hidden p-0.5 shadow-inner"
-                    style={{ background: 'linear-gradient(to right, #ef4444 0%, #f97316 20%, #eab308 40%, #22c55e 60%, #3b82f6 80%, #09090b 100%)' }}
-                  >
-                    <div
-                      className="absolute top-0 bottom-0 w-3 bg-white rounded-full border-2 border-slate-950 shadow-md transition-all duration-700 -ml-1.5"
-                      style={{ left: `${(analysisResult.score / 10) * 100}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between px-1 text-[10px] font-mono font-semibold text-slate-400">
-                    <span>1</span>
-                    <span>2</span>
-                    <span>3</span>
-                    <span>4</span>
-                    <span>5</span>
-                    <span>6</span>
-                    <span>7</span>
-                    <span>8</span>
-                    <span>9</span>
-                    <span>10</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* 3. CONSUMER ACTION BUTTONS (Save Result, Remeasure, New Object) */}
             <div className="w-full bg-white border border-slate-200/90 rounded-3xl p-4 shadow-xs space-y-2.5">
               <button
@@ -621,17 +570,6 @@ export default function App() {
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Remeasure</span>
-                </button>
-
-                {/* Redo in alternate mode switcher */}
-                <button
-                  onClick={() => {
-                    setVersionMode((v) => (v === 'V6Pro' ? 'V5' : 'V6Pro'));
-                  }}
-                  className="flex-1 h-11 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-xs flex items-center justify-center gap-1 transition-colors border border-teal-200"
-                  title="Switch and compare in alternate mode"
-                >
-                  <span>Redo in {versionMode === 'V6Pro' ? 'V5 Mode' : 'V6Pro Mode'}</span>
                 </button>
 
                 <button

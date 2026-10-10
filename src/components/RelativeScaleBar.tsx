@@ -131,14 +131,14 @@ export const RelativeScaleBar: React.FC<RelativeScaleBarProps> = ({
         </div>
       </div>
 
-      {/* Reference Benchmark & Absolute Score Comparison Footer */}
+      {/* Reference Benchmark & Relative Metrology Footer */}
       <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
         <div className="flex items-center gap-1.5 truncate">
           <CheckCircle2 className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-          <span className="truncate">Reference: <strong>{refName} ({differential.baselineValue.toFixed(1)})</strong></span>
+          <span className="truncate">Reference Anchor: <strong className="text-slate-800">{refName}</strong></span>
         </div>
-        <div className="font-mono text-[11px] text-slate-600 shrink-0">
-          Absolute Score: <strong className="text-slate-900">{legacyScore.toFixed(1)} / 10</strong>
+        <div className="font-mono text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200/60 font-semibold shrink-0">
+          Smart Touch AI Calibrated
         </div>
       </div>
     </div>

@@ -76,7 +76,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             </p>
           </div>
           <span className="text-[10px] font-mono font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
-            TouchxAi_V6Pro
+            Touch4xAi
           </span>
         </div>
 
@@ -95,7 +95,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Slide the microphone port across your inner forearm <strong>5+ times</strong> at steady speed (10–25 cm/s).
+                Slide the microphone port across your inner forearm <strong>3 times</strong> back and forth at steady speed.
               </p>
               <div className="mt-2 text-[10px] font-mono text-slate-400">
                 Anchor Centroid: ~1,100 Hz
@@ -123,7 +123,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Tap the microphone port firmly against your forearm skin <strong>5 times</strong> to calibrate viscoelastic delay.
+                Tap the microphone port firmly against your forearm skin <strong>3 times</strong> to calibrate viscoelastic delay.
               </p>
               <div className="mt-2 text-[10px] font-mono text-slate-400">
                 Contact Delay: ~28 ms lag
@@ -151,7 +151,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Hold the phone microphone against your forearm skin for <strong>5+ seconds</strong> while vibrating.
+                Hold the phone microphone against your forearm skin for <strong>6 seconds</strong> while vibrating.
               </p>
               <div className="mt-2 text-[10px] font-mono text-slate-400">
                 Acoustic Z: 1.6 × 10⁵ kg/(m²·s)

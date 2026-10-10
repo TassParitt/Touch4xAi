@@ -220,7 +220,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                       2
                     </span>
                     <p className="leading-relaxed">
-                      Slide the phone across the surface <strong>5 times</strong> (left-right-left-right-left) continuously <strong>without lifting</strong> the smartphone.
+                      Slide the phone across the surface <strong>3 times</strong> back and forth continuously <strong>without lifting</strong> the smartphone.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
@@ -228,7 +228,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                       3
                     </span>
                     <p className="leading-relaxed">
-                      The accelerometer tracks the 5 sliding passes and locks the measured result as your <strong>0% Texture Reference</strong>.
+                      The accelerometer tracks the 3 sliding passes and locks the measured result as your <strong>0% Texture Reference</strong>.
                     </p>
                   </div>
                 </>
@@ -249,7 +249,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                       2
                     </span>
                     <p className="leading-relaxed">
-                      Tap the microphone port firmly against the surface <strong>5 times</strong>.
+                      Tap the microphone port firmly against the surface <strong>3 times</strong>.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
@@ -257,7 +257,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                       3
                     </span>
                     <p className="leading-relaxed">
-                      The sensor measures elastic contact deceleration and locks the result as your <strong>0% Hardness Reference</strong>.
+                      The accelerometer tracks the 3 taps and locks the result as your <strong>0% Hardness Reference</strong>.
                     </p>
                   </div>
                 </>
@@ -278,7 +278,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                       2
                     </span>
                     <p className="leading-relaxed">
-                      Hold the phone firmly for <strong>5 seconds</strong> while phone vibrations excite the material.
+                      Hold the phone firmly for <strong>6 seconds</strong> while phone vibrations excite the material.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
@@ -286,7 +286,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                       3
                     </span>
                     <p className="leading-relaxed">
-                      Acoustic resonance impedance locks the result as your <strong>0% Density Reference</strong>.
+                      The sensor measures structural damping decay over 6 seconds and locks the result as your <strong>0% Density Reference</strong>.
                     </p>
                   </div>
                 </>

@@ -85,6 +85,7 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
   const timeSignal: number[] = result.timeDomainSignal || computed.timeDomainSignal;
   const spectrumDb: number[] = result.spectrumDbData || computed.spectrumDbData;
   const peaks = result.dominantPeaks || computed.dominantPeaks;
+  const diff = result.differentialResult || calculateDifferentialPercentage(result.mode, result.score);
 
   // Generate visualizer snapshots whenever modal is opened
   useEffect(() => {
@@ -113,7 +114,7 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `TouchxAi_V4_${result.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${result.mode}_${activeSnapshotTab}_snapshot.png`;
+    a.download = `Touch4xAi_${result.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${result.mode}_${activeSnapshotTab}_snapshot.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -127,9 +128,9 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
     if (e) e.stopPropagation();
     const timestampIso = new Date().toISOString();
     const cleanName = result.objectName.replace(/[^a-zA-Z0-9]/g, '_') || 'Sample';
-    const filename = `TouchxAi_V4_${cleanName}_DSP_${result.mode}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `Touch4xAi_${cleanName}_DSP_${result.mode}_${new Date().toISOString().slice(0, 10)}.csv`;
 
-    let csv = `### TOUCHXAI V4 (SMART CONTACT) - DSP METRICS CSV EXPORT ###\n`;
+    let csv = `### TOUCH4XAI (SMART TOUCH FOR TRAINING AI) - DSP METRICS CSV EXPORT ###\n`;
     csv += `Export_Timestamp,"${timestampIso}"\n`;
     csv += `Object_Name,"${result.objectName}"\n`;
     csv += `Measurement_Mode,"${result.mode}"\n`;
@@ -280,19 +281,36 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
 
     if (format === 'json') {
       const fullJsonPayload = {
-        app: 'TouchxAi_V6Pro (Relative Skin Metrology)',
-        version: '6.0-Pro',
+        app: 'Touch4xAi (Smart Touch for Training AI)',
+        version: '1.0-SmartTouch',
         versionMode: result.versionMode || 'V6Pro',
         timestamp: timestampIso,
         object: result.objectName,
         measurementMode: result.mode,
+        // Large Tactile Model (LTM) Training Data - Preserving both Reference & Test object absolute scores
+        tactileModelTrainingRecord: {
+          referenceObject: {
+            name: result.referenceProfile?.name || 'Human Forearm Skin',
+            absoluteScore: diff.baselineValue,
+            scaleBenchmark: 'Ashby Physical Benchmark (1.0 to 10.0)',
+            role: '0% Differential Anchor',
+          },
+          testingObject: {
+            name: result.objectName,
+            absoluteScore: result.score,
+            scaleBenchmark: 'Ashby Physical Benchmark (1.0 to 10.0)',
+            differentialPercent: `${diff.differentialPercent > 0 ? '+' : ''}${diff.differentialPercent}%`,
+            mode: result.mode,
+            tactileDescriptor: result.descriptor,
+          },
+        },
         relativeDifferentialScale: {
           differentialPercent: `${diff.differentialPercent > 0 ? '+' : ''}${diff.differentialPercent}%`,
           displayLabel: diff.displayLabel,
-          baselineReference: 'Human Forearm Skin (0% Anchor)',
+          baselineReference: result.referenceProfile?.name || 'Human Forearm Skin (0% Anchor)',
           baselineValue: diff.baselineValue,
           testMaterialValue: diff.testValue,
-          scaleRange: '-100% (Ultra-Soft/Smooth) ⟷ 0% (Forearm Skin) ⟷ +100% (Rigid/Abrasive)',
+          scaleRange: '-100% (Ultra-Soft/Smooth) ⟷ 0% (Reference Skin) ⟷ +100% (Rigid/Abrasive)',
         },
         imuKinematics: {
           slidingVelocityCms: imu.slidingVelocityCms ?? 18.2,
@@ -493,7 +511,7 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>TouchxAi V4 Report - ${result.objectName}</title>
+  <title>Touch4xAi Report - ${result.objectName}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 28px; color: #0f172a; background: #fff; }
     .header { border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
@@ -518,8 +536,8 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
   </div>
   <div class="header">
     <div>
-      <h1 class="title">TouchxAi V6Pro (Relative Skin Metrology)</h1>
-      <p class="subtitle">CALIBRATED FOREARM SKIN BASELINE & 6-AXIS IMU SENSOR REPORT</p>
+      <h1 class="title">Touch4xAi (Smart Touch for Training AI)</h1>
+      <p class="subtitle">CALIBRATED REFERENCE BASELINE & 6-AXIS IMU SENSOR REPORT</p>
       <p style="font-size: 12px; margin: 6px 0 0 0;"><strong>Target Object:</strong> ${result.objectName} &nbsp;·&nbsp; <strong>Mode:</strong> ${result.mode.toUpperCase()} &nbsp;·&nbsp; <strong>Sensor:</strong> ${result.deviceModel || 'Smartphone Acoustic Port'}</p>
     </div>
     <div class="score-box">
@@ -677,7 +695,7 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
   ` : ''}
 
   <div style="font-size: 11px; color: #64748b; font-family: monospace; text-align: center; margin-top: 36px;">
-    Report Generated by TouchxAi V4 SMART CONTACT · ${timestampIso}
+    Report Generated by Touch4xAi · Smart Touch for Training AI · ${timestampIso}
   </div>
 </body>
 </html>`;
@@ -699,7 +717,7 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `TouchxAi_V4_${result.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${result.mode}_report.${exportResult.extension}`;
+        a.download = `Touch4xAi_${result.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${result.mode}_report.${exportResult.extension}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -802,8 +820,10 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
               </p>
             </div>
             <div className="text-right">
-              <span className="text-lg font-black font-mono text-slate-900">{result.score.toFixed(1)}</span>
-              <span className="text-xs text-slate-400 font-mono">/10</span>
+              <span className="text-base font-extrabold text-teal-800">
+                {diff.differentialPercent > 0 ? '+' : ''}{diff.differentialPercent}%
+              </span>
+              <span className="text-[10px] text-slate-500 block font-medium">vs Reference</span>
               <span className="text-[10px] text-teal-700 block font-semibold">12 DSP Params</span>
             </div>
           </div>

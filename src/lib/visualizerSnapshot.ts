@@ -480,7 +480,7 @@ function drawCompositeToContext(
   // App Brand
   ctx.fillStyle = '#2dd4bf';
   ctx.font = 'bold 13px sans-serif';
-  ctx.fillText('TouchxAi V4 (SMART CONTACT)', 20, 26);
+  ctx.fillText('Touch4xAi (Smart Touch for Training AI)', 20, 26);
 
   ctx.fillStyle = '#64748b';
   ctx.font = '10px monospace';

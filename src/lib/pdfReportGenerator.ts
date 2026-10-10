@@ -544,18 +544,18 @@ export async function generateMaterialPdfReport(params: {
   doc.setFont('courier', 'normal');
   doc.setFontSize(6.8);
   doc.setTextColor(71, 85, 105);
-  doc.text('This characterization was computed using TouchxAi V4 physical acoustic Fourier processing.', margin + 4, curY + 9.5);
+  doc.text('This characterization was computed using Touch4xAi Smart Touch AI metrology engine.', margin + 4, curY + 9.5);
   doc.text('Algorithms comply with Hertzian impulse elasticity and FFT spectral centroid standards (ISO 10843).', margin + 4, curY + 13.5);
 
   // Footer for Page 2
   doc.setFont('courier', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text('TOUCHXAI V4 METROLOGY SUITE  |  CONFIDENTIAL SCIENTIFIC REPORT', margin, pageHeight - 8);
+  doc.text('TOUCH4XAI SMART TOUCH SUITE  |  LARGE TACTILE MODEL REPORT', margin, pageHeight - 8);
   doc.text('PAGE 2 OF 2', pageWidth - margin, pageHeight - 8, { align: 'right' });
 
   // 5. Initiate direct PDF download
   const cleanName = result.objectName.replace(/[^a-zA-Z0-9]/g, '_') || 'Sample';
-  const pdfFilename = `TouchxAi_V4_Report_${cleanName}_${result.mode}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const pdfFilename = `Touch4xAi_Report_${cleanName}_${result.mode}_${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(pdfFilename);
 }

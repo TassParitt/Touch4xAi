@@ -82,9 +82,9 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
   const strokeActiveRef = useRef<boolean>(false);
   const densityIntervalRef = useRef<any>(null);
 
-  // Listen to accelerometer updates for texture 5-pass sliding without lifting
+  // Listen to accelerometer updates for texture sliding (3 passes back & forth) and hardness tapping (3 taps)
   useEffect(() => {
-    if (mode !== 'texture') return;
+    if (mode !== 'texture' && mode !== 'hardness') return;
 
     let unmounted = false;
     const motionListener = (event: DeviceMotionEvent) => {
@@ -98,51 +98,65 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
       const az = acc.z ?? 9.8;
       const now = performance.now();
 
-      // 1. Check surface contact (ensure phone is not lifted off surface)
-      // Normal gravitational vector on flat surface is ~9.8 m/s^2.
-      // A sudden vertical spike or drop indicates the phone was lifted off surface.
-      const vertDeviation = Math.abs(az - 9.8);
-      if (vertDeviation > 4.5 && now - lastContactCheckTimeRef.current > 400) {
-        setIsContactMaintained(false);
-        setContactWarning('⚠️ Contact lost! Keep phone sliding flat on surface without lifting.');
-        lastContactCheckTimeRef.current = now;
-      } else if (vertDeviation <= 2.2) {
-        setIsContactMaintained(true);
-        setContactWarning(null);
-      }
+      if (mode === 'texture') {
+        // 1. Check surface contact (ensure phone is not lifted off surface)
+        const vertDeviation = Math.abs(az - 9.8);
+        if (vertDeviation > 4.5 && now - lastContactCheckTimeRef.current > 400) {
+          setIsContactMaintained(false);
+          setContactWarning('⚠️ Contact lost! Keep phone sliding flat on surface without lifting.');
+          lastContactCheckTimeRef.current = now;
+        } else if (vertDeviation <= 2.2) {
+          setIsContactMaintained(true);
+          setContactWarning(null);
+        }
 
-      // 2. Track lateral sliding passes along X axis
-      const speedThreshold = 0.8; // m/s^2 acceleration threshold
-      if (slideStrokeStateRef.current === 'idle') {
-        if (expectedSlideDirection === 'left' && ax < -speedThreshold) {
-          slideStrokeStateRef.current = 'moving_left';
-          strokeStartTimeRef.current = now;
-        } else if (expectedSlideDirection === 'right' && ax > speedThreshold) {
-          slideStrokeStateRef.current = 'moving_right';
-          strokeStartTimeRef.current = now;
+        // 2. Track back and forth sliding passes along lateral axis
+        const speedThreshold = 0.7; // m/s^2 acceleration threshold
+        if (slideStrokeStateRef.current === 'idle') {
+          if (expectedSlideDirection === 'left' && ax < -speedThreshold) {
+            slideStrokeStateRef.current = 'moving_left';
+            strokeStartTimeRef.current = now;
+          } else if (expectedSlideDirection === 'right' && ax > speedThreshold) {
+            slideStrokeStateRef.current = 'moving_right';
+            strokeStartTimeRef.current = now;
+          }
+        } else if (slideStrokeStateRef.current === 'moving_left') {
+          // Turning point / deceleration indicating slide pass completed
+          if (ax > -0.2 && now - strokeStartTimeRef.current > 160) {
+            slideStrokeStateRef.current = 'idle';
+            setSlideCount((prev) => {
+              const next = prev + 1;
+              setExpectedSlideDirection('right');
+              if (next >= 3) {
+                setTimeout(() => finishMeasurement(next, 0, 0), 200);
+              }
+              return next;
+            });
+          }
+        } else if (slideStrokeStateRef.current === 'moving_right') {
+          // Turning point / deceleration indicating slide pass completed
+          if (ax < 0.2 && now - strokeStartTimeRef.current > 160) {
+            slideStrokeStateRef.current = 'idle';
+            setSlideCount((prev) => {
+              const next = prev + 1;
+              setExpectedSlideDirection('left');
+              if (next >= 3) {
+                setTimeout(() => finishMeasurement(next, 0, 0), 200);
+              }
+              return next;
+            });
+          }
         }
-      } else if (slideStrokeStateRef.current === 'moving_left') {
-        // Turning point / deceleration indicating slide pass 1/3/5 completed
-        if (ax > -0.2 && now - strokeStartTimeRef.current > 180) {
-          slideStrokeStateRef.current = 'idle';
-          setSlideCount((prev) => {
-            const next = prev + 1;
-            setExpectedSlideDirection('right');
-            if (next >= 5) {
-              setTimeout(() => finishMeasurement(next, 0, 0), 200);
-            }
-            return next;
-          });
-        }
-      } else if (slideStrokeStateRef.current === 'moving_right') {
-        // Turning point / deceleration indicating slide pass 2/4 completed
-        if (ax < 0.2 && now - strokeStartTimeRef.current > 180) {
-          slideStrokeStateRef.current = 'idle';
-          setSlideCount((prev) => {
-            const next = prev + 1;
-            setExpectedSlideDirection('left');
-            if (next >= 5) {
-              setTimeout(() => finishMeasurement(next, 0, 0), 200);
+      } else if (mode === 'hardness') {
+        // 3. Accelerometer sensor detects tap impact shock
+        const impactVector = Math.hypot(ax, ay, Math.abs(az - 9.8));
+        if (impactVector > 2.8 && now - lastEventTimeRef.current > 350) {
+          lastEventTimeRef.current = now;
+          globalImuTracker.recordAudioImpact();
+          setTapCount((c) => {
+            const next = c + 1;
+            if (next >= 3) {
+              setTimeout(() => finishMeasurement(0, next, 0), 200);
             }
             return next;
           });
@@ -221,7 +235,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
     };
   }, []);
 
-  // Density vibration mode timer - High performance continuous vibration for 10 seconds
+  // Density vibration mode timer - High performance continuous vibration for 6 seconds
   useEffect(() => {
     let vibInterval: any = null;
 
@@ -239,14 +253,14 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
       densityIntervalRef.current = setInterval(() => {
         setSecondsHeld((prev) => {
           const next = prev + 0.1;
-          if (next >= 10.0) {
+          if (next >= 6.0) {
             clearInterval(densityIntervalRef.current);
             clearInterval(vibInterval);
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
               navigator.vibrate(0);
             }
-            finishMeasurement(0, 0, 10.0);
-            return 10.0;
+            finishMeasurement(0, 0, 6.0);
+            return 6.0;
           }
           return parseFloat(next.toFixed(1));
         });
@@ -383,7 +397,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
           lastEventTimeRef.current = now;
           setSlideCount((c) => {
             const next = c + 1;
-            if (next >= 5) {
+            if (next >= 3) {
               setTimeout(() => finishMeasurement(next, 0, 0), 300);
             }
             return next;
@@ -398,7 +412,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
           globalImuTracker.recordAudioImpact(); // Record timestamp for viscoelastic deceleration stop lag
           setTapCount((c) => {
             const next = c + 1;
-            if (next >= 5) {
+            if (next >= 3) {
               setTimeout(() => finishMeasurement(0, next, 0), 300);
             }
             return next;
@@ -539,7 +553,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         avgDb: currentDb,
         modeSpecificMetric: {
           label: mode === 'texture' ? 'Slide Passes' : mode === 'hardness' ? 'Tap Impulse' : 'Hold Duration',
-          value: mode === 'texture' ? `${Math.max(5, slides || slideCount)}/5 (Left-Right)` : mode === 'hardness' ? `${Math.max(5, taps || tapCount)}/5` : `${holdSec || secondsHeld}s`,
+          value: mode === 'texture' ? `${Math.max(3, slides || slideCount)}/3` : mode === 'hardness' ? `${Math.max(3, taps || tapCount)}/3` : `${(holdSec || secondsHeld).toFixed(1)}s`,
         },
         spectrumData: lastFreqSnapshotRef.current,
         deviceModel: resolvedDeviceModel,
@@ -605,7 +619,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         avgDb: currentDb,
         modeSpecificMetric: {
           label: mode === 'texture' ? 'Slide Passes' : mode === 'hardness' ? 'Tap Impulses' : 'Hold Time',
-          value: mode === 'texture' ? '5/5 (Left-Right)' : mode === 'hardness' ? '5/5' : '10.0s',
+          value: mode === 'texture' ? '3/3' : mode === 'hardness' ? '3/3' : '6.0s',
         },
         spectrumData: lastFreqSnapshotRef.current,
         deviceModel: objectDetails.deviceModel || detectedPhoneModel || 'Smartphone Acoustic Sensor',
@@ -634,76 +648,47 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
       const next = slideCount + 1;
       setSlideCount(next);
       setExpectedSlideDirection(next % 2 === 0 ? 'left' : 'right');
-      if (next >= 5) finishMeasurement(next, 0, 0);
+      if (next >= 3) finishMeasurement(next, 0, 0);
     } else if (mode === 'hardness') {
       const next = tapCount + 1;
       setTapCount(next);
-      if (next >= 5) finishMeasurement(0, next, 0);
+      if (next >= 3) finishMeasurement(0, next, 0);
     } else if (mode === 'density') {
-      finishMeasurement(0, 0, 10.0);
+      finishMeasurement(0, 0, 6.0);
     }
   };
 
   const progressPercent =
     mode === 'texture'
-      ? (slideCount / 5) * 100
+      ? (slideCount / 3) * 100
       : mode === 'hardness'
-      ? (tapCount / 5) * 100
-      : (secondsHeld / 10.0) * 100;
+      ? (tapCount / 3) * 100
+      : (secondsHeld / 6.0) * 100;
 
   return (
     <div className="w-full flex flex-col items-center">
-      {/* Target Object Header with Quick Switcher on Screen 2 */}
-      <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 mb-3 flex flex-col gap-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 truncate">
-            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
-              {mode === 'texture' && 'TX'}
-              {mode === 'hardness' && 'HD'}
-              {mode === 'density' && 'DN'}
-            </div>
-            <div className="truncate text-left">
-              <h4 className="text-xs font-bold text-slate-900 truncate">
-                {activeObjectName}
-              </h4>
-              <p className="text-[11px] text-slate-500">
-                Measuring{' '}
-                <strong className="text-slate-700 capitalize font-medium">{mode}</strong> at MIC Port
-              </p>
-            </div>
+      {/* Target Object Header on Screen 2 */}
+      <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5 truncate">
+          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
+            {mode === 'texture' && 'TX'}
+            {mode === 'hardness' && 'HD'}
+            {mode === 'density' && 'DN'}
           </div>
-
-          <div className="flex items-center gap-1.5 text-[11px] font-mono tabular-nums text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shrink-0">
-            <Activity className="w-3.5 h-3.5 text-teal-600 animate-pulse" />
-            <span>{currentDb} dB</span>
+          <div className="truncate text-left">
+            <h4 className="text-xs font-bold text-slate-900 truncate">
+              {activeObjectName}
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              Measuring{' '}
+              <strong className="text-slate-700 capitalize font-medium">{mode}</strong> at MIC Port
+            </p>
           </div>
         </div>
 
-        {/* Quick Material Switcher on Screen 2 so user never tests the wrong object */}
-        <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-200/60">
-          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider pr-0.5">
-            Switch Target:
-          </span>
-          {[
-            { label: '🪵 Wood Table', value: 'Oak Wood Table' },
-            { label: '🖐️ Soft Skin', value: 'Soft Human Skin' },
-            { label: '🧽 Sponge', value: 'Soft Polyurethane Sponge' },
-            { label: '🔪 Steel', value: 'Structural Alloy Steel' },
-            { label: '🪞 Glass', value: 'Mirror Glass Plate' },
-          ].map((chip) => (
-            <button
-              key={chip.value}
-              type="button"
-              onClick={() => setActiveObjectName(chip.value)}
-              className={`text-[10px] font-medium px-2 py-0.5 rounded-md border transition-all ${
-                activeObjectName.toLowerCase().includes(chip.value.toLowerCase().split(' ')[0])
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-bold'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              {chip.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5 text-[11px] font-mono tabular-nums text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shrink-0">
+          <Activity className="w-3.5 h-3.5 text-teal-600 animate-pulse" />
+          <span>{currentDb} dB</span>
         </div>
       </div>
 
@@ -777,41 +762,39 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
             <div className="text-left">
               <span className="text-xs font-bold text-slate-900 block leading-tight">
-                {mode === 'texture' && 'Slide on Surface 5 Times (Left-Right-Left-Right-Left)'}
-                {mode === 'hardness' && 'Tap Microphone Port (5 Times)'}
-                {mode === 'density' && 'Hold MIC Port Steady (10 Seconds Vibration)'}
+                {mode === 'texture' && 'Slide on Surface 3 Times Back & Forth'}
+                {mode === 'hardness' && 'Tap Microphone Port 3 Times'}
+                {mode === 'density' && 'Hold Steady on Surface (6 Seconds Vibration)'}
               </span>
               <span className="text-[11px] text-slate-500">
-                {mode === 'texture' && `${slideCount} of 5 passes recorded via accelerometer (continuous contact, do not lift)`}
-                {mode === 'hardness' && `${tapCount} of 5 taps recorded`}
-                {mode === 'density' && `${secondsHeld.toFixed(1)}s of 10.0s elapsed (vibrating continuous)`}
+                {mode === 'texture' && `${slideCount} of 3 passes recorded via accelerometer`}
+                {mode === 'hardness' && `${tapCount} of 3 taps recorded via accelerometer`}
+                {mode === 'density' && `${secondsHeld.toFixed(1)}s of 6.0s elapsed (vibrating)`}
               </span>
             </div>
           </div>
 
           <div className="text-right">
             <span className="text-lg font-bold font-mono text-slate-900 tabular-nums">
-              {mode === 'texture' && `${slideCount}/5`}
-              {mode === 'hardness' && `${tapCount}/5`}
-              {mode === 'density' && `${secondsHeld.toFixed(1)}s / 10s`}
+              {mode === 'texture' && `${slideCount}/3`}
+              {mode === 'hardness' && `${tapCount}/3`}
+              {mode === 'density' && `${secondsHeld.toFixed(1)}s / 6s`}
             </span>
           </div>
         </div>
 
-        {/* 5-Pass Texture Sliding Stepper (Left-Right-Left-Right-Left without lifting) */}
+        {/* 3-Pass Texture Sliding Stepper */}
         {mode === 'texture' && (
           <div className="space-y-2">
-            <div className="grid grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-3 gap-2">
               {[
-                { step: 1, dir: 'Left ⬅' },
-                { step: 2, dir: 'Right ➔' },
-                { step: 3, dir: 'Left ⬅' },
-                { step: 4, dir: 'Right ➔' },
-                { step: 5, dir: 'Left ⬅' },
+                { step: 1, label: 'Slide 1' },
+                { step: 2, label: 'Slide 2' },
+                { step: 3, label: 'Slide 3' },
               ].map((p) => (
                 <div
                   key={p.step}
-                  className={`p-1.5 rounded-lg border text-center transition-all ${
+                  className={`p-2 rounded-xl border text-center transition-all ${
                     slideCount >= p.step
                       ? 'bg-teal-600 text-white border-teal-600 font-bold shadow-2xs'
                       : slideCount === p.step - 1
@@ -820,7 +803,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
                   }`}
                 >
                   <div className="text-[10px] font-mono leading-none">Pass {p.step}</div>
-                  <div className="text-[10px] font-bold mt-0.5 leading-none">{p.dir}</div>
+                  <div className="text-xs font-bold mt-1 leading-none">{p.label}</div>
                 </div>
               ))}
             </div>
@@ -832,21 +815,21 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
               </div>
             ) : (
               <div className="flex items-center justify-between px-2 text-[10px] font-mono text-teal-700">
-                <span>Accelerometer: Tracking sliding surface friction</span>
-                <span className="font-bold">Target: Slide {expectedSlideDirection.toUpperCase()}</span>
+                <span>Accelerometer: Tracking 3-pass sliding friction</span>
+                <span className="font-bold">Pass {Math.min(3, slideCount + 1)} / 3</span>
               </div>
             )}
           </div>
         )}
 
-        {/* High performance vibration indicator in density mode */}
+        {/* Vibration indicator in density mode */}
         {mode === 'density' && (
           <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200/80 text-[11px] text-rose-800 font-medium">
             <div className="flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
-              <span>High-Performance Vibration Active (10s Continuous)</span>
+              <span>Vibration Active (6s Continuous)</span>
             </div>
-            <span className="font-mono text-rose-700 font-bold">{Math.round(10.0 - secondsHeld)}s left</span>
+            <span className="font-mono text-rose-700 font-bold">{Math.max(0, Math.round(6.0 - secondsHeld))}s left</span>
           </div>
         )}
 
@@ -874,9 +857,9 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
             {mode === 'texture' && <MoveHorizontal className="w-3.5 h-3.5" />}
             {mode === 'hardness' && <ArrowDown className="w-3.5 h-3.5" />}
             {mode === 'density' && <Radio className="w-3.5 h-3.5" />}
-            {mode === 'texture' && `Slide ${expectedSlideDirection === 'left' ? 'Left ⬅' : 'Right ➔'} (Pass ${slideCount + 1}/5)`}
-            {mode === 'hardness' && `Tap MIC Contact (+1 Tap)`}
-            {mode === 'density' && `Simulate Complete 10s Damping`}
+            {mode === 'texture' && `Slide Phone (+1 Pass, ${slideCount + 1}/3)`}
+            {mode === 'hardness' && `Tap MIC Port (+1 Tap, ${tapCount + 1}/3)`}
+            {mode === 'density' && `Simulate Complete 6s Vibration`}
           </button>
 
           <button

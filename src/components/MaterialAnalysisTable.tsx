@@ -231,8 +231,8 @@ export const MaterialAnalysisTable: React.FC<MaterialAnalysisTableProps> = ({
 
   const handleCopyTable = () => {
     const textData = [
-      `TouchxAi V4 Material Analysis Report · Object: ${result.objectName} (${result.mode.toUpperCase()})`,
-      `Calibrated Scale: ${result.score.toFixed(1)} / 10 · Descriptor: ${result.descriptor}`,
+      `Touch4xAi Smart Touch Material Analysis Report · Object: ${result.objectName} (${result.mode.toUpperCase()})`,
+      `Tactile Descriptor: ${result.descriptor} · Absolute Scale: ${result.score.toFixed(1)} / 10`,
       `--------------------------------------------------------------------------------`,
       `Parameter Name\tSymbol\tMeasured Value\tCategory\tPhysical Benchmark Relation`,
       ...allParams.map((p) => `${p.name}\t${p.symbol}\t${p.value}\t${p.category}\t${p.benchmarkRelation}`),

@@ -111,12 +111,12 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 
     const timestampIso = new Date().toISOString();
     const dateFormatted = timestampIso.slice(0, 10);
-    const filename = `TouchxAi_V4_Consolidated_Measurements_${targetRecords.length}_records_${dateFormatted}.csv`;
+    const filename = `Touch4xAi_Consolidated_Measurements_${targetRecords.length}_records_${dateFormatted}.csv`;
 
-    let csv = `### TOUCHXAI V4 (SMART CONTACT) - CONSOLIDATED MEASUREMENTS DATASET ###\n`;
+    let csv = `### TOUCH4XAI (SMART TOUCH FOR TRAINING AI) - CONSOLIDATED MEASUREMENTS DATASET ###\n`;
     csv += `Export_Timestamp,"${timestampIso}"\n`;
     csv += `Total_Records_Exported,${targetRecords.length}\n`;
-    csv += `Generated_By,"TouchxAi V4 Acoustic Material Testing Suite"\n`;
+    csv += `Generated_By,"Touch4xAi Smart Touch AI Dataset Suite"\n`;
     csv += `Export_Scope,"${selectedIds.size > 0 && !exportAllFallback ? 'Selected Measurements' : 'All Filtered Measurements'}"\n\n`;
 
     // 1. Consolidated Tabular Dataset (RFC-4180 standard for Pandas / Excel / R / MATLAB)

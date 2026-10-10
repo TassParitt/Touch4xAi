@@ -385,7 +385,7 @@ export const CompareResultsModal: React.FC<CompareResultsModalProps> = ({
             </div>
             <div>
               <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                TouchxAi_V6Pro Compare Results
+                Touch4xAi Compare Results
               </h2>
               <p className="text-[10px] text-slate-500 font-mono">
                 Overlaid Fourier Spectrum & 10-Object Measurement Log
