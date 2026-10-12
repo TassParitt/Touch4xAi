@@ -38,6 +38,7 @@ import { InteractiveFftVisualizer } from './components/InteractiveFftVisualizer'
 import { MaterialHeatmap } from './components/MaterialHeatmap';
 import { RelativeScaleBar } from './components/RelativeScaleBar';
 import { CalibrationModal } from './components/CalibrationModal';
+import { CloudflareR2Modal } from './components/CloudflareR2Modal';
 import { getBaselineData, getActiveReference, updateActiveReferenceBaseline } from './lib/calibrationEngine';
 import {
   detectSmartphone,
@@ -113,6 +114,7 @@ export default function App() {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+  const [isR2ModalOpen, setIsR2ModalOpen] = useState(false);
 
   // Current Firebase Auth user
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -245,6 +247,15 @@ export default function App() {
           {/* Right Action Icons: Auth Bar, Saved History Drawer & Frame mode toggle */}
           <div className="flex items-center gap-1.5">
             <AuthBar onUserChanged={setCurrentUser} />
+
+            <button
+              onClick={() => setIsR2ModalOpen(true)}
+              className="p-2 rounded-xl text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors relative"
+              title="Cloudflare R2 Bucket Sync (touch4xai)"
+            >
+              <Cloud className="w-4 h-4" />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 ring-2 ring-white" />
+            </button>
 
             <button
               onClick={() => setIsHistoryDrawerOpen(true)}
@@ -801,6 +812,12 @@ export default function App() {
           records={savedRecords}
           onDeleteRecord={handleDeleteRecord}
           onSelectRecord={handleSelectHistoryRecord}
+        />
+
+        <CloudflareR2Modal
+          isOpen={isR2ModalOpen}
+          onClose={() => setIsR2ModalOpen(false)}
+          savedRecords={savedRecords}
         />
       </main>
     </div>

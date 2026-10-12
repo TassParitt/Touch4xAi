@@ -16,9 +16,12 @@ import {
   Sparkles,
   Layers,
   CheckCircle2,
+  UploadCloud,
+  Loader2,
 } from 'lucide-react';
 import { SavedRecord, MeasureMode } from '../types';
 import { buildDspParameters } from '../lib/acousticDsp';
+import { uploadDatasetToCloudflareR2 } from '../lib/r2Storage';
 
 interface HistoryDrawerProps {
   isOpen: boolean;
@@ -40,6 +43,9 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | MeasureMode>('all');
   const [isExportSuccess, setIsExportSuccess] = useState(false);
+  const [isR2Syncing, setIsR2Syncing] = useState(false);
+  const [r2SyncSuccess, setR2SyncSuccess] = useState(false);
+  const [r2SyncedCount, setR2SyncedCount] = useState(0);
 
   // Filter records based on search query and mode
   const filteredRecords = useMemo(() => {
@@ -190,6 +196,32 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 
     setIsExportSuccess(true);
     setTimeout(() => setIsExportSuccess(false), 2400);
+  };
+
+  const handleSyncToR2 = async () => {
+    const targetRecords =
+      selectedIds.size > 0
+        ? records.filter((r) => selectedIds.has(r.id))
+        : filteredRecords;
+
+    if (targetRecords.length === 0) return;
+
+    setIsR2Syncing(true);
+    setR2SyncSuccess(false);
+
+    try {
+      for (const rec of targetRecords) {
+        const filename = `dataset_${rec.mode}_${rec.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${rec.id}.json`;
+        await uploadDatasetToCloudflareR2(rec, filename);
+      }
+      setR2SyncedCount(targetRecords.length);
+      setR2SyncSuccess(true);
+      setTimeout(() => setR2SyncSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to sync to Cloudflare R2:', err);
+    } finally {
+      setIsR2Syncing(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -482,9 +514,37 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
             )}
           </button>
 
+          {/* Cloudflare R2 Edge Sync Button */}
+          <button
+            type="button"
+            onClick={handleSyncToR2}
+            disabled={isR2Syncing || filteredRecords.length === 0}
+            className="w-full h-10 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all bg-orange-600 hover:bg-orange-500 text-white shadow-xs disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+            title="Stream datasets directly to Cloudflare R2 bucket touch4xai"
+          >
+            {isR2Syncing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Streaming Datasets to R2...</span>
+              </>
+            ) : r2SyncSuccess ? (
+              <>
+                <Check className="w-4 h-4 text-orange-100" />
+                <span>Synced {r2SyncedCount} Datasets to touch4xai!</span>
+              </>
+            ) : (
+              <>
+                <UploadCloud className="w-4 h-4 text-orange-200" />
+                <span>
+                  Sync {selectedCount > 0 ? `${selectedCount} Selected` : `All (${filteredRecords.length})`} to Cloudflare R2
+                </span>
+              </>
+            )}
+          </button>
+
           {/* Quick Subtext Info */}
           <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono px-1">
-            <span>RFC-4180 Dataset Format</span>
+            <span>Bucket: touch4xai / raw_datasets</span>
             <span className="flex items-center gap-1 text-teal-700 font-semibold">
               <CheckCircle2 className="w-3 h-3 text-teal-600" />
               Includes all 12 DSP physical metrics

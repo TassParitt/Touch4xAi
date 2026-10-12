@@ -20,6 +20,7 @@ import {
   Eye,
   Sparkles,
   FileSpreadsheet,
+  UploadCloud,
 } from 'lucide-react';
 import { AcousticAnalysisResult, SavedRecord, DspParameters } from '../types';
 import { auth, signInWithGoogle, saveMeasurementToFirestore } from '../lib/firebase';
@@ -30,6 +31,7 @@ import { InteractiveFftVisualizer } from './InteractiveFftVisualizer';
 import { generateMaterialPdfReport } from '../lib/pdfReportGenerator';
 import { calculateDifferentialPercentage } from '../lib/calibrationEngine';
 import { globalImuTracker } from '../lib/imuTracker';
+import { uploadDatasetToCloudflareR2 } from '../lib/r2Storage';
 
 interface SaveResultModalProps {
   isOpen: boolean;
@@ -63,6 +65,9 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
   const [isCsvDownloaded, setIsCsvDownloaded] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isPdfGenerated, setIsPdfGenerated] = useState(false);
+  const [isUploadingR2, setIsUploadingR2] = useState(false);
+  const [r2UploadSuccess, setR2UploadSuccess] = useState(false);
+  const [r2UploadKey, setR2UploadKey] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -233,6 +238,12 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
   ];
 
   const cloudDestinations = [
+    {
+      name: 'Cloudflare R2 · touch4xai / raw_datasets /',
+      desc: 'Direct presigned PUT edge bucket for micro-acoustic & 6-axis IMU training datasets',
+      status: 'Target: touch4xai (Edge)',
+      isR2: true,
+    },
     { name: 'Firebase Firestore · /users/measurements', desc: 'Cloud vault with full DSP parameters & spectra', status: currentUser ? 'Connected' : 'Sign-in required' },
     { name: 'Google Drive · /Touch_AI_Vault/Records/', desc: 'Synced with Google Workspace account', status: 'Ready' },
     { name: 'Cloud Storage · /Dataset_Materials/2026/', desc: 'Touch_AI shared lab workspace', status: 'Synced' },
@@ -707,6 +718,25 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
     };
   };
 
+  const handleUploadToR2 = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsUploadingR2(true);
+    setR2UploadSuccess(false);
+
+    try {
+      const fullDataset = JSON.parse(generateExportContent('json').data);
+      const filename = `dataset_${result.mode}_${result.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.json`;
+      const res = await uploadDatasetToCloudflareR2(fullDataset, filename);
+      setR2UploadSuccess(true);
+      setR2UploadKey(res.objectKey);
+      setTimeout(() => setR2UploadSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to upload to Cloudflare R2:', err);
+    } finally {
+      setIsUploadingR2(false);
+    }
+  };
+
   const handleConfirmSave = async () => {
     if (activeTab === 'phone') {
       if (fileFormat === 'pdf') {
@@ -742,8 +772,20 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
       targetFolder: activeTab === 'phone' ? selectedPhoneFolder : selectedCloudTarget,
     };
 
+    // If Cloudflare R2 is targeted, stream directly via Presigned PUT
+    if (activeTab === 'cloud' && selectedCloudTarget.includes('Cloudflare R2')) {
+      try {
+        const fullDataset = JSON.parse(generateExportContent('json').data);
+        const filename = `dataset_${result.mode}_${result.objectName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.json`;
+        const r2Res = await uploadDatasetToCloudflareR2(fullDataset, filename);
+        setR2UploadKey(r2Res.objectKey);
+      } catch (err) {
+        console.warn('Cloudflare R2 direct upload warning:', err);
+      }
+    }
+
     // If cloud tab and user signed in, save directly to Firestore with full tables, params, and figures
-    if (activeTab === 'cloud' && currentUser) {
+    if (activeTab === 'cloud' && currentUser && !selectedCloudTarget.includes('Cloudflare R2')) {
       try {
         await saveMeasurementToFirestore(currentUser.uid, savedRecord);
       } catch (err) {
@@ -1116,7 +1158,57 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
                 ))}
               </div>
 
-              {!currentUser && (
+              {selectedCloudTarget.includes('Cloudflare R2') && (
+                <div className="p-3.5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/90 rounded-2xl flex items-center justify-between gap-3 text-left shadow-2xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Cloud className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-900">Direct R2 Stream (touch4xai)</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-orange-200/80 text-orange-950 font-bold">
+                          Presigned PUT
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 font-mono mt-0.5 truncate">
+                        Streams full raw audio and 6-axis IMU JSON datasets directly into touch4xai/raw_datasets/
+                      </p>
+                      {r2UploadKey && (
+                        <p className="text-[9px] text-emerald-700 font-mono mt-0.5 truncate">
+                          Stored: {r2UploadKey}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleUploadToR2}
+                    disabled={isUploadingR2}
+                    className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isUploadingR2 ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Streaming...</span>
+                      </>
+                    ) : r2UploadSuccess ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Uploaded!</span>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span>Upload to R2</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {!currentUser && selectedCloudTarget.includes('Firebase') && (
                 <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs">
                   <div className="text-left">
                     <p className="font-semibold text-amber-900 text-[11px]">Sign in with Google</p>
@@ -1134,9 +1226,9 @@ export const SaveResultModal: React.FC<SaveResultModalProps> = ({
               )}
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 flex items-center justify-between">
-                <span>Encrypted AES-256 cloud sync</span>
+                <span>Direct token-safe presigned PUT storage</span>
                 <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Full Scientific Fidelity
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Full Metrology Fidelity
                 </span>
               </div>
             </div>

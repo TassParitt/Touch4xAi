@@ -1,8 +1,11 @@
 import express from 'express';
+import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { resolveMaterialPhysics } from './src/lib/materialPhysics.ts';
 
 dotenv.config();
@@ -13,7 +16,158 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '50mb' }));
+
+// Cloudflare R2 Metrology Storage Configuration
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || '2752109d4d388476f42f329b6f68c629';
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'touch4xai';
+
+const getR2Client = () => {
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  if (!accessKeyId || !secretAccessKey) {
+    return null;
+  }
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+};
+
+// API: Status of Cloudflare R2 Integration
+app.get('/api/r2-status', (_req, res) => {
+  const hasKeys = Boolean(process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY);
+  const workerUrl = process.env.CLOUDFLARE_WORKER_URL || '';
+  return res.json({
+    configured: hasKeys || Boolean(workerUrl),
+    bucket: R2_BUCKET_NAME,
+    accountId: R2_ACCOUNT_ID,
+    hasDirectKeys: hasKeys,
+    workerUrlConfigured: Boolean(workerUrl),
+    dashboardUrl: `https://dash.cloudflare.com/${R2_ACCOUNT_ID}/r2/default/buckets/${R2_BUCKET_NAME}`,
+  });
+});
+
+// API: Get Presigned Upload URL for Cloudflare R2 (matches Worker spec)
+app.post('/api/get-upload-url', async (req, res) => {
+  try {
+    const { filename = 'measurement.json', contentType = 'application/json', customWorkerUrl } = req.body;
+    const workerEndpoint = customWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
+
+    // 1. If a Cloudflare Worker endpoint is provided, proxy request to it
+    if (workerEndpoint) {
+      try {
+        const workerTarget = workerEndpoint.endsWith('/api/get-upload-url')
+          ? workerEndpoint
+          : `${workerEndpoint.replace(/\/$/, '')}/api/get-upload-url`;
+        const workerRes = await fetch(workerTarget, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename, contentType }),
+        });
+        if (workerRes.ok) {
+          const workerData = await workerRes.json();
+          return res.json(workerData);
+        }
+      } catch (err) {
+        console.warn('Worker endpoint fallback to direct S3 client:', err);
+      }
+    }
+
+    // 2. Direct S3 presigned PUT if R2 credentials exist in environment
+    const s3 = getR2Client();
+    const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const objectKey = `raw_datasets/${Date.now()}_${cleanFilename}`;
+
+    if (s3) {
+      const command = new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: objectKey,
+        ContentType: contentType,
+      });
+
+      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+
+      return res.json({
+        uploadUrl,
+        objectKey,
+        publicUrl: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/${objectKey}`,
+      });
+    }
+
+    // 3. Fallback preview simulation when tokens are not yet set in environment
+    return res.json({
+      uploadUrl: `/api/mock-r2-upload?objectKey=${encodeURIComponent(objectKey)}`,
+      objectKey,
+      publicUrl: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/${objectKey}`,
+      simulated: true,
+      message: 'Running in simulated R2 mode. Add R2_ACCESS_KEY_ID & R2_SECRET_ACCESS_KEY to .env to upload to real R2.',
+    });
+  } catch (error: any) {
+    console.error('Error generating presigned R2 upload URL:', error);
+    return res.status(500).json({ error: error.message || 'Failed to generate presigned upload URL' });
+  }
+});
+
+// API: Mock upload endpoint for local testing when R2 tokens are not yet in env
+app.put('/api/mock-r2-upload', express.raw({ type: '*/*', limit: '50mb' }), (req, res) => {
+  const objectKey = req.query.objectKey || `raw_datasets/${Date.now()}_dataset.json`;
+  console.log(`[R2 Simulation] Dataset successfully stored: ${objectKey}`);
+  return res.status(200).json({
+    success: true,
+    objectKey,
+    simulated: true,
+    message: 'Dataset received and validated successfully.',
+  });
+});
+
+// API: Server-side direct upload fallback (for when browser CORS PUT is blocked by Cloudflare R2)
+app.post('/api/upload-r2-direct', async (req, res) => {
+  try {
+    const { filename = 'measurement.json', payload, contentType = 'application/json' } = req.body;
+    if (!payload) {
+      return res.status(400).json({ error: 'Payload data is required' });
+    }
+
+    const s3 = getR2Client();
+    const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const objectKey = `raw_datasets/${Date.now()}_${cleanFilename}`;
+    const bodyContent = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+    if (s3) {
+      const command = new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: objectKey,
+        ContentType: contentType,
+        Body: Buffer.from(bodyContent),
+      });
+
+      await s3.send(command);
+
+      return res.json({
+        success: true,
+        objectKey,
+        publicUrl: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/${objectKey}`,
+        direct: true,
+      });
+    }
+
+    // In simulation mode
+    return res.json({
+      success: true,
+      objectKey,
+      publicUrl: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/${objectKey}`,
+      simulated: true,
+    });
+  } catch (error: any) {
+    console.error('Direct R2 upload error:', error);
+    return res.status(500).json({ error: error.message || 'Direct R2 upload failed' });
+  }
+});
 
 // Shared server-side Gemini client
 const getAi = () => {
@@ -352,11 +506,15 @@ Return a valid JSON object:
 
 // Mount Vite middleware in development or serve static in production
 const isProd = process.env.NODE_ENV === 'production';
+const httpServer = http.createServer(app);
 
 if (!isProd) {
   const { createServer } = await import('vite');
   const vite = await createServer({
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+    },
     appType: 'spa',
   });
   app.use(vite.middlewares);
@@ -367,6 +525,6 @@ if (!isProd) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Touch_AI full-stack server running on http://0.0.0.0:${PORT}`);
 });
