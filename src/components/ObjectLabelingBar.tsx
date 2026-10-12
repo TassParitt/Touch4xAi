@@ -28,12 +28,10 @@ export const ObjectLabelingBar: React.FC<ObjectLabelingBarProps> = ({
   const animFrameRef = useRef<number | null>(null);
   const speechRecognitionRef = useRef<any>(null);
 
-  // Sync with currentObject changes (e.g. from camera or history)
+  // Sync with currentObject changes (e.g. when going back or clearing to blank "")
   useEffect(() => {
-    if (currentObject.name) {
-      setInputName(currentObject.name);
-      setIsObjectConfirmed(true);
-    }
+    setInputName(currentObject.name || '');
+    setIsObjectConfirmed(Boolean(currentObject.name && currentObject.name.trim().length > 0));
   }, [currentObject.name]);
 
   const inferMaterial = (name: string): string => {
@@ -257,24 +255,39 @@ export const ObjectLabelingBar: React.FC<ObjectLabelingBarProps> = ({
         <div className="space-y-2.5">
           {!isObjectConfirmed ? (
             <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={inputName}
-                onChange={(e) => setInputName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleConfirmObject(inputName);
-                  }
-                }}
-                placeholder="Type object name (e.g. Silk Fabric, Oak Wood)..."
-                className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all"
-                autoFocus
-              />
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={inputName}
+                  onChange={(e) => setInputName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleConfirmObject(inputName);
+                    }
+                  }}
+                  placeholder="Type object name (e.g. Silk Fabric, Wood)..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all pr-8"
+                  autoFocus
+                />
+                {inputName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputName('');
+                      handleClearObject();
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                    title="Clear to blank space"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => handleConfirmObject(inputName)}
                 disabled={!inputName.trim()}
-                className="px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors disabled:opacity-40 shrink-0"
+                className="px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors disabled:opacity-40 shrink-0 cursor-pointer"
               >
                 <span>Enter</span>
                 <CornerDownLeft className="w-3.5 h-3.5" />
@@ -293,18 +306,29 @@ export const ObjectLabelingBar: React.FC<ObjectLabelingBarProps> = ({
                       {currentObject.material}
                     </span>
                   </div>
-                  <span className="text-[11px] text-teal-700 font-medium">Identified & ready to measure</span>
+                  <span className="text-[11px] text-teal-700 font-medium">Ready to measure</span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsObjectConfirmed(false)}
-                className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-teal-100/60 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
-                title="Edit name"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit</span>
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsObjectConfirmed(false)}
+                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-teal-100/60 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Edit name"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearObject}
+                  className="p-1.5 text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Measure new object (clear to blank space)"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>New Object</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

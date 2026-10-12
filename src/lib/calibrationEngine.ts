@@ -3,71 +3,20 @@ import { BaselineSkinMetrics, DifferentialResult, ReferenceProfile } from '../ty
 const STORAGE_KEY = 'touchxai_v6_baseline';
 const REFERENCE_PROFILE_KEY = 'touchxai_active_reference';
 
-// Default biological forearm skin reference values (Ashby Tactile Baseline)
+// Requirement 1 & 2: Keep reference names blank until user calibrates. Delete forearm skin default.
 export const DEFAULT_REFERENCE_PROFILE: ReferenceProfile = {
-  id: 'ref-forearm-skin',
-  name: 'Forearm Skin',
-  material: 'Biological Tissue',
+  id: 'ref-custom',
+  name: '', // Blank reference name
+  material: '',
   textureValue: 2.8,
   hardnessValue: 1.4,
   densityValue: 1.5,
   isCalibrated: false,
-  calibratedAt: 'Factory Standard',
+  calibratedAt: undefined,
 };
 
-// Common preset reference objects
-export const PRESET_REFERENCES: ReferenceProfile[] = [
-  {
-    id: 'ref-forearm-skin',
-    name: 'Forearm Skin',
-    material: 'Biological Tissue',
-    textureValue: 2.8,
-    hardnessValue: 1.4,
-    densityValue: 1.5,
-    isCalibrated: false,
-    calibratedAt: 'Standard Biological Baseline',
-  },
-  {
-    id: 'ref-palm-skin',
-    name: 'Palm Skin',
-    material: 'Thick Epidermal Tissue',
-    textureValue: 3.2,
-    hardnessValue: 1.8,
-    densityValue: 1.6,
-    isCalibrated: false,
-    calibratedAt: 'Palm Epidermis Standard',
-  },
-  {
-    id: 'ref-glass-plate',
-    name: 'Polished Glass',
-    material: 'Silicate Glass',
-    textureValue: 1.1,
-    hardnessValue: 8.9,
-    densityValue: 7.2,
-    isCalibrated: false,
-    calibratedAt: 'Optical Flat Baseline',
-  },
-  {
-    id: 'ref-oak-wood',
-    name: 'Hardwood Oak',
-    material: 'Natural Hardwood',
-    textureValue: 4.8,
-    hardnessValue: 5.8,
-    densityValue: 5.2,
-    isCalibrated: false,
-    calibratedAt: 'Seasoned Oak Standard',
-  },
-  {
-    id: 'ref-steel-plate',
-    name: 'Structural Steel',
-    material: 'Carbon Steel',
-    textureValue: 1.8,
-    hardnessValue: 8.6,
-    densityValue: 8.9,
-    isCalibrated: false,
-    calibratedAt: 'Tool Steel Baseline',
-  },
-];
+// No hardcoded preset references - user defines their own reference object during calibration
+export const PRESET_REFERENCES: ReferenceProfile[] = [];
 
 export const DEFAULT_SKIN_BASELINE: BaselineSkinMetrics = {
   texture: {
@@ -75,7 +24,7 @@ export const DEFAULT_SKIN_BASELINE: BaselineSkinMetrics = {
     centroid: 1100,
     rmsDb: -42.0,
     vSlideMeanCms: 18.5,
-    timestamp: 'Default Forearm Baseline',
+    timestamp: 'Uncalibrated',
   },
   hardness: {
     value: 1.4,
@@ -83,14 +32,14 @@ export const DEFAULT_SKIN_BASELINE: BaselineSkinMetrics = {
     dominantHarmonicHz: 220,
     dampingRatio: '0.44 ζ',
     rmsDb: -38.5,
-    timestamp: 'Default Forearm Baseline',
+    timestamp: 'Uncalibrated',
   },
   density: {
     value: 1.5,
     dominantHarmonicHz: 160,
     impedanceZ: '1.6 × 10⁵ kg/(m²·s)',
     avgDb: -44.0,
-    timestamp: 'Default Forearm Baseline',
+    timestamp: 'Uncalibrated',
   },
   calibratedAt: undefined,
   isCalibrated: false,
@@ -102,14 +51,18 @@ export const DEFAULT_SKIN_BASELINE: BaselineSkinMetrics = {
 export function getActiveReference(): ReferenceProfile {
   try {
     const raw = localStorage.getItem(REFERENCE_PROFILE_KEY);
-    if (!raw) return DEFAULT_REFERENCE_PROFILE;
+    if (!raw) return { ...DEFAULT_REFERENCE_PROFILE };
     const parsed = JSON.parse(raw);
+    // Ensure if name was legacy 'Forearm Skin', reset to blank if not explicitly calibrated
+    if (!parsed.isCalibrated && parsed.name === 'Forearm Skin') {
+      return { ...DEFAULT_REFERENCE_PROFILE };
+    }
     return {
       ...DEFAULT_REFERENCE_PROFILE,
       ...parsed,
     };
   } catch {
-    return DEFAULT_REFERENCE_PROFILE;
+    return { ...DEFAULT_REFERENCE_PROFILE };
   }
 }
 
@@ -144,7 +97,7 @@ export function updateActiveReferenceBaseline(
 
   const updated: ReferenceProfile = {
     ...current,
-    name: customName || current.name,
+    name: (customName || current.name || 'Calibrated Reference').trim(),
     isCalibrated: true,
     calibratedAt: now,
   };
@@ -162,7 +115,7 @@ export function updateActiveReferenceBaseline(
 }
 
 /**
- * Retrieves persisted forearm skin baseline from localStorage (backward compatibility)
+ * Retrieves persisted baseline
  */
 export function getBaselineData(): BaselineSkinMetrics {
   const activeRef = getActiveReference();
@@ -172,7 +125,7 @@ export function getBaselineData(): BaselineSkinMetrics {
       centroid: 1100,
       rmsDb: -42.0,
       vSlideMeanCms: 18.5,
-      timestamp: activeRef.calibratedAt || 'Default Reference',
+      timestamp: activeRef.calibratedAt || 'Uncalibrated',
     },
     hardness: {
       value: activeRef.hardnessValue,
@@ -180,14 +133,14 @@ export function getBaselineData(): BaselineSkinMetrics {
       dominantHarmonicHz: 220,
       dampingRatio: '0.44 ζ',
       rmsDb: -38.5,
-      timestamp: activeRef.calibratedAt || 'Default Reference',
+      timestamp: activeRef.calibratedAt || 'Uncalibrated',
     },
     density: {
       value: activeRef.densityValue,
       dominantHarmonicHz: 160,
       impedanceZ: '1.6 × 10⁵ kg/(m²·s)',
       avgDb: -44.0,
-      timestamp: activeRef.calibratedAt || 'Default Reference',
+      timestamp: activeRef.calibratedAt || 'Uncalibrated',
     },
     calibratedAt: activeRef.calibratedAt,
     isCalibrated: activeRef.isCalibrated,
@@ -215,7 +168,7 @@ export function saveBaselineModeData(
 }
 
 /**
- * Resets reference back to factory standard
+ * Resets reference back to blank uncalibrated state
  */
 export function resetBaselineData(): void {
   try {
@@ -228,7 +181,7 @@ export function resetBaselineData(): void {
 
 /**
  * Calculates relative differential percentage with UNLIMITED positive range
- * e.g., +1,250% compared with the reference (Forearm Skin, Palm Skin, Glass, etc.).
+ * e.g., +1,250% compared with the calibrated reference.
  *
  * Formula: ((testScore - baseVal) / baseVal) * 100%
  * Minimum bounded at -100% (zero property), Positive is UNLIMITED.
@@ -241,7 +194,7 @@ export function calculateDifferentialPercentage(
 ): DifferentialResult {
   const activeMode = mode === 'calibration' ? 'hardness' : mode;
   const activeRef = getActiveReference();
-  const refName = customReferenceName || activeRef.name;
+  const refName = (customReferenceName || activeRef.name || 'Reference').trim();
 
   let baseVal = customBaselineScore;
   if (baseVal === undefined || baseVal === null) {
@@ -260,7 +213,7 @@ export function calculateDifferentialPercentage(
   const diffPercent = Math.max(-100, Math.round(diffRaw));
   const absDiff = Math.abs(diffPercent);
 
-  // Dynamic auto-adjusted scale range (e.g. 1500 for +1250%, 500 for +380%, 100 for small differences)
+  // Dynamic auto-adjusted scale range
   const maxScaleRange = Math.max(100, Math.ceil((Math.max(100, absDiff) * 1.25) / 100) * 100);
 
   // Format with thousand separator

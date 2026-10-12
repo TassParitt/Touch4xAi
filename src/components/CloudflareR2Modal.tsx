@@ -307,7 +307,7 @@ export const CloudflareR2Modal: React.FC<CloudflareR2ModalProps> = ({
       targetDirectory: 'raw_datasets/',
       storageTarget: 'Cloudflare R2 (touch4xai)',
       accountId: '2752109d4d388476f42f329b6f68c629',
-      referenceBaselineAnchor: 'Human Forearm Skin Baseline (0% Differential Anchor)',
+      referenceBaselineAnchor: 'Calibrated Reference Baseline (0% Differential Anchor)',
       batchAggregatedMetrics: batchMetrics,
       records: selectedRecords.map((r) => ({
         id: r.id,

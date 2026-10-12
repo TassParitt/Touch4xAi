@@ -176,7 +176,7 @@ export const PhoneContactDiagram: React.FC<PhoneContactDiagramProps> = ({ mode }
                   fontWeight="bold"
                   fontFamily="sans-serif"
                 >
-                  ← SLIDE HORIZONTALLY (5+ TIMES) →
+                  ← SLIDE HORIZONTALLY (3 TIMES) →
                 </text>
               </g>
 
@@ -267,7 +267,7 @@ export const PhoneContactDiagram: React.FC<PhoneContactDiagramProps> = ({ mode }
                   fontWeight="bold"
                   fontFamily="sans-serif"
                 >
-                  TAP 5×
+                  TAP 3×
                 </text>
               </g>
 
@@ -351,7 +351,7 @@ export const PhoneContactDiagram: React.FC<PhoneContactDiagramProps> = ({ mode }
                   fontWeight="bold"
                   fontFamily="sans-serif"
                 >
-                  ⚡ HOLD CONTACT FIRMLY · 10s CONTINUOUS VIBRATION
+                  ⚡ HOLD CONTACT FIRMLY · 6s CONTINUOUS VIBRATION
                 </text>
               </g>
 
@@ -439,17 +439,17 @@ export const PhoneContactDiagram: React.FC<PhoneContactDiagramProps> = ({ mode }
       <div className="w-full mt-2.5 text-center text-xs text-slate-600">
         {mode === 'texture' && (
           <p className="font-medium text-slate-700">
-            Hold smartphone <strong className="text-teal-700">vertically</strong> and slide bottom microphone port back and forth horizontally across the surface 5+ times.
+            Hold smartphone <strong className="text-teal-700">vertically</strong> and slide bottom microphone port back and forth horizontally across the surface 3 times. Make sure battery is sufficient.
           </p>
         )}
         {mode === 'hardness' && (
           <p className="font-medium text-slate-700">
-            Hold smartphone <strong className="text-sky-700">vertically</strong> and tap the bottom microphone port firmly up and down against the object 5 times.
+            Hold smartphone <strong className="text-sky-700">vertically</strong> and tap the bottom microphone port firmly up and down against the object 3 times. Make sure battery is sufficient.
           </p>
         )}
         {mode === 'density' && (
           <p className="font-medium text-slate-700">
-            Hold smartphone <strong className="text-rose-700">vertically</strong> firmly touching the surface while the 10-second high-performance motor vibrates.
+            Hold steady for <strong className="text-rose-700">6 seconds</strong> firmly touching the surface. Microphone make sure battery is sufficient.
           </p>
         )}
       </div>

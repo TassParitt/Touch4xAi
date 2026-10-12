@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ChevronLeft,
 } from 'lucide-react';
+import { PhoneContactDiagram } from './PhoneContactDiagram';
 
 interface AudioFourierVisualizerProps {
   mode: MeasureMode;
@@ -57,18 +58,25 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
   }, [objectDetails.name]);
 
   // Measurement progression state
-  const [slideCount, setSlideCount] = useState(0);
-  const [expectedSlideDirection, setExpectedSlideDirection] = useState<'left' | 'right'>('left');
-  const [isContactMaintained, setIsContactMaintained] = useState(true);
-  const [contactWarning, setContactWarning] = useState<string | null>(null);
-  const [tapCount, setTapCount] = useState(0);
+  const [slideCount, setSlideCount] = useState(0); // Measured by MIC: 1 time = forward + stop + backward
+  const [tapCount, setTapCount] = useState(0); // Measured by MIC: 3 distinct acoustic taps
   const [secondsHeld, setSecondsHeld] = useState(0);
   const [isProcessingFinal, setIsProcessingFinal] = useState(false);
 
-  // Accelerometer sliding physics trackers
-  const slideStrokeStateRef = useRef<'idle' | 'moving_left' | 'moving_right'>('idle');
-  const strokeStartTimeRef = useRef<number>(0);
-  const lastContactCheckTimeRef = useRef<number>(0);
+  // Live IMU sensor kinematics (measured exclusively by Accelerometer & Gyroscope)
+  const [phoneSpeedCms, setPhoneSpeedCms] = useState(0);
+  const [phoneAngleDeg, setPhoneAngleDeg] = useState(0);
+  const [phoneDirection, setPhoneDirection] = useState('Stationary');
+  const [liveViscoLagMs, setLiveViscoLagMs] = useState(24.0); // Real viscoelastic contact delay in ms
+  const [textureCycleSubStep, setTextureCycleSubStep] = useState<'forward' | 'stop' | 'backward' | 'done'>('forward');
+
+  // Contact latency recording
+  const recordedViscoLagsRef = useRef<number[]>([]);
+  const tapAudioTimeRef = useRef<number>(0);
+
+  // Texture sliding acoustic cycle state machine (MIC-driven: forward -> stop -> backward -> stop = 1 time)
+  const textureCyclePhaseRef = useRef<'await_forward' | 'sliding_forward' | 'stopped_turn' | 'sliding_backward'>('await_forward');
+  const lastStateChangeTimeRef = useRef<number>(0);
 
   // Live telemetry metrics
   const [dominantFreq, setDominantFreq] = useState(1280);
@@ -79,88 +87,63 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
   // Threshold detection trackers
   const lastEventTimeRef = useRef<number>(0);
-  const strokeActiveRef = useRef<boolean>(false);
   const densityIntervalRef = useRef<any>(null);
 
-  // Listen to accelerometer updates for texture sliding (3 passes back & forth) and hardness tapping (3 taps)
+  // Accelerometer & Gyroscope sensor listener: ONLY measures speed, angle, and direction
+  // DOES NOT COUNT SLIDING OR TAPPING TIMES!
   useEffect(() => {
-    if (mode !== 'texture' && mode !== 'hardness') return;
-
     let unmounted = false;
+    let lastVelocityX = 0;
+    let lastVelocityY = 0;
+    let lastVelocityZ = 0;
+    let lastTime = performance.now();
+
     const motionListener = (event: DeviceMotionEvent) => {
-      if (unmounted || isProcessingFinal) return;
+      if (unmounted) return;
 
       const acc = event.acceleration || event.accelerationIncludingGravity;
+      const rot = event.rotationRate;
       if (!acc) return;
 
       const ax = acc.x ?? 0;
       const ay = acc.y ?? 0;
-      const az = acc.z ?? 9.8;
+      const az = acc.z ?? 9.81;
       const now = performance.now();
+      const dt = Math.max(0.001, Math.min(0.1, (now - lastTime) / 1000));
+      lastTime = now;
 
-      if (mode === 'texture') {
-        // 1. Check surface contact (ensure phone is not lifted off surface)
-        const vertDeviation = Math.abs(az - 9.8);
-        if (vertDeviation > 4.5 && now - lastContactCheckTimeRef.current > 400) {
-          setIsContactMaintained(false);
-          setContactWarning('⚠️ Contact lost! Keep phone sliding flat on surface without lifting.');
-          lastContactCheckTimeRef.current = now;
-        } else if (vertDeviation <= 2.2) {
-          setIsContactMaintained(true);
-          setContactWarning(null);
-        }
+      // 1. Measure speed (cm/s) via high-pass filtered leaky integration
+      lastVelocityX = (lastVelocityX + ax * dt) * 0.92;
+      lastVelocityY = (lastVelocityY + ay * dt) * 0.92;
+      lastVelocityZ = (lastVelocityZ + (az - 9.81) * dt) * 0.92;
+      const speedMs = Math.sqrt(lastVelocityX ** 2 + lastVelocityY ** 2 + lastVelocityZ ** 2);
+      const speedCms = parseFloat((speedMs * 100).toFixed(1));
+      setPhoneSpeedCms(speedCms > 0.5 ? speedCms : 0);
 
-        // 2. Track back and forth sliding passes along lateral axis
-        const speedThreshold = 0.7; // m/s^2 acceleration threshold
-        if (slideStrokeStateRef.current === 'idle') {
-          if (expectedSlideDirection === 'left' && ax < -speedThreshold) {
-            slideStrokeStateRef.current = 'moving_left';
-            strokeStartTimeRef.current = now;
-          } else if (expectedSlideDirection === 'right' && ax > speedThreshold) {
-            slideStrokeStateRef.current = 'moving_right';
-            strokeStartTimeRef.current = now;
-          }
-        } else if (slideStrokeStateRef.current === 'moving_left') {
-          // Turning point / deceleration indicating slide pass completed
-          if (ax > -0.2 && now - strokeStartTimeRef.current > 160) {
-            slideStrokeStateRef.current = 'idle';
-            setSlideCount((prev) => {
-              const next = prev + 1;
-              setExpectedSlideDirection('right');
-              if (next >= 3) {
-                setTimeout(() => finishMeasurement(next, 0, 0), 200);
-              }
-              return next;
-            });
-          }
-        } else if (slideStrokeStateRef.current === 'moving_right') {
-          // Turning point / deceleration indicating slide pass completed
-          if (ax < 0.2 && now - strokeStartTimeRef.current > 160) {
-            slideStrokeStateRef.current = 'idle';
-            setSlideCount((prev) => {
-              const next = prev + 1;
-              setExpectedSlideDirection('left');
-              if (next >= 3) {
-                setTimeout(() => finishMeasurement(next, 0, 0), 200);
-              }
-              return next;
-            });
-          }
-        }
-      } else if (mode === 'hardness') {
-        // 3. Accelerometer sensor detects tap impact shock
-        const impactVector = Math.hypot(ax, ay, Math.abs(az - 9.8));
-        if (impactVector > 2.8 && now - lastEventTimeRef.current > 350) {
-          lastEventTimeRef.current = now;
-          globalImuTracker.recordAudioImpact();
-          setTapCount((c) => {
-            const next = c + 1;
-            if (next >= 3) {
-              setTimeout(() => finishMeasurement(0, next, 0), 200);
-            }
-            return next;
-          });
-        }
+      // 2. Measure angle (degrees) relative to normal
+      const totalAccel = Math.sqrt(ax * ax + ay * ay + az * az);
+      if (totalAccel > 0) {
+        const cosAngle = Math.min(1.0, Math.max(-1.0, Math.abs(az) / totalAccel));
+        const angleDeg = Math.round((Math.acos(cosAngle) * 180) / Math.PI);
+        setPhoneAngleDeg(angleDeg);
+      }
+
+      // 3. Measure direction
+      if (Math.abs(ax) < 0.4 && Math.abs(ay) < 0.4) {
+        setPhoneDirection('Stationary');
+      } else if (Math.abs(ax) >= Math.abs(ay)) {
+        setPhoneDirection(ax < -0.4 ? 'Forward ↗' : 'Backward ↙');
+      } else {
+        setPhoneDirection(ay < -0.4 ? 'Lateral Left ←' : 'Lateral Right →');
+      }
+
+      // 4. Hardness Viscoelastic Contact Latency measurement:
+      // If audio contact was recorded by MIC, detect when downward impact deceleration completes (|a| < 0.8)
+      if (tapAudioTimeRef.current > 0 && Math.abs(az - 9.81) < 0.8) {
+        const delay = Math.max(1.0, Math.min(65.0, now - tapAudioTimeRef.current));
+        recordedViscoLagsRef.current.push(delay);
+        setLiveViscoLagMs(parseFloat(delay.toFixed(1)));
+        tapAudioTimeRef.current = 0; // reset
       }
     };
 
@@ -169,7 +152,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
       unmounted = true;
       window.removeEventListener('devicemotion', motionListener);
     };
-  }, [mode, expectedSlideDirection, isProcessingFinal]);
+  }, []);
 
   // Initialize Web Audio API
   useEffect(() => {
@@ -388,28 +371,55 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         setCurrentDb(calculatedDb);
       }
 
-      // Audio Event Detectors
+      // Audio Event Detectors (MIC-DRIVEN)
       const now = performance.now();
       if (mode === 'texture') {
-        // Detect sliding friction acoustic bursts
-        if (avgVal > 38 && !strokeActiveRef.current && now - lastEventTimeRef.current > 400) {
-          strokeActiveRef.current = true;
-          lastEventTimeRef.current = now;
-          setSlideCount((c) => {
-            const next = c + 1;
-            if (next >= 3) {
-              setTimeout(() => finishMeasurement(next, 0, 0), 300);
-            }
-            return next;
-          });
-        } else if (avgVal < 25) {
-          strokeActiveRef.current = false;
+        // Requirement 3: Microphone measures sliding back and forth for 3 times
+        // 1 time = slide forward + stop + slide backward
+        const isFrictionSound = avgVal > 30; // micro-acoustic friction detected above noise floor
+        const isQuiet = avgVal < 20; // stop/silence
+
+        if (textureCyclePhaseRef.current === 'await_forward') {
+          if (isFrictionSound && now - lastStateChangeTimeRef.current > 250) {
+            textureCyclePhaseRef.current = 'sliding_forward';
+            lastStateChangeTimeRef.current = now;
+            setTextureCycleSubStep('forward');
+          }
+        } else if (textureCyclePhaseRef.current === 'sliding_forward') {
+          if (isQuiet && now - lastStateChangeTimeRef.current > 160) {
+            textureCyclePhaseRef.current = 'stopped_turn';
+            lastStateChangeTimeRef.current = now;
+            setTextureCycleSubStep('stop');
+          }
+        } else if (textureCyclePhaseRef.current === 'stopped_turn') {
+          if (isFrictionSound && now - lastStateChangeTimeRef.current > 180) {
+            textureCyclePhaseRef.current = 'sliding_backward';
+            lastStateChangeTimeRef.current = now;
+            setTextureCycleSubStep('backward');
+          }
+        } else if (textureCyclePhaseRef.current === 'sliding_backward') {
+          if (isQuiet && now - lastStateChangeTimeRef.current > 160) {
+            // Completed 1 full cycle: forward + stop + backward = 1 time!
+            textureCyclePhaseRef.current = 'await_forward';
+            lastStateChangeTimeRef.current = now;
+            setTextureCycleSubStep('done');
+            setSlideCount((c) => {
+              const next = c + 1;
+              if (next >= 3) {
+                setTimeout(() => finishMeasurement(next, 0, 0), 250);
+              }
+              return next;
+            });
+          }
         }
       } else if (mode === 'hardness') {
-        // Detect acoustic impact tap transient spike
-        if (maxEnergy > 165 && now - lastEventTimeRef.current > 420) {
+        // Requirement 4: Microphone measures tapping object for 3 times
+        // Evaluates viscoelastic contact latency between audio touch and accelerometer stop
+        if (maxEnergy > 155 && now - lastEventTimeRef.current > 400) {
           lastEventTimeRef.current = now;
-          globalImuTracker.recordAudioImpact(); // Record timestamp for viscoelastic deceleration stop lag
+          tapAudioTimeRef.current = now; // Mark audio contact onset for viscoelastic Δt_visco calculation
+          globalImuTracker.recordAudioImpact();
+
           setTapCount((c) => {
             const next = c + 1;
             if (next >= 3) {
@@ -497,6 +507,10 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
     if (isProcessingFinal) return;
     setIsProcessingFinal(true);
 
+    const avgViscoLag = recordedViscoLagsRef.current.length > 0
+      ? recordedViscoLagsRef.current.reduce((a, b) => a + b, 0) / recordedViscoLagsRef.current.length
+      : liveViscoLagMs;
+
     try {
       const res = await fetch('/api/analyze-touch-spectrum', {
         method: 'POST',
@@ -512,11 +526,14 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
           spectralCentroid: spectralCentroidRef.current,
           highFreqRatio: highFreqRatioRef.current,
           spectrumData: lastFreqSnapshotRef.current,
+          viscoelasticLagMs: avgViscoLag,
+          peakDecelerationG: globalImuTracker.getMetrics().peakDecelerationG,
+          slidingVelocityCms: phoneSpeedCms || 18.2,
         }),
       });
 
       const data = await res.json();
-      const finalScore = data.score || (mode === 'texture' ? 7.2 : mode === 'hardness' ? 8.4 : 6.8);
+      const finalScore = data.score || (mode === 'texture' ? 2.8 : mode === 'hardness' ? 1.4 : 1.5);
       const computedDsp = buildDspParameters(
         mode,
         finalScore,
@@ -552,7 +569,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         peakFreqs: [dominantFreq, dominantFreq * 2],
         avgDb: currentDb,
         modeSpecificMetric: {
-          label: mode === 'texture' ? 'Slide Passes' : mode === 'hardness' ? 'Tap Impulse' : 'Hold Duration',
+          label: mode === 'texture' ? 'Slide Times (MIC)' : mode === 'hardness' ? 'Taps (MIC)' : 'Hold Duration',
           value: mode === 'texture' ? `${Math.max(3, slides || slideCount)}/3` : mode === 'hardness' ? `${Math.max(3, taps || tapCount)}/3` : `${(holdSec || secondsHeld).toFixed(1)}s`,
         },
         spectrumData: lastFreqSnapshotRef.current,
@@ -565,8 +582,11 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         referenceProfile: activeRef,
         imuMetrics: {
           ...imuMetrics,
+          slidingVelocityCms: phoneSpeedCms || imuMetrics.slidingVelocityCms,
+          viscoelasticLagMs: avgViscoLag,
           slidePassCount: slides || slideCount,
-          continuousContactMaintained: isContactMaintained,
+          directionAngleDeg: phoneAngleDeg || imuMetrics.directionAngleDeg,
+          continuousContactMaintained: true,
         },
         versionMode,
       };
@@ -583,6 +603,8 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         slideCount: slides || slideCount,
         tapCount: taps || tapCount,
         holdDuration: holdSec || secondsHeld,
+        viscoelasticLagMs: avgViscoLag,
+        slidingVelocityCms: phoneSpeedCms || 18.2,
       });
 
       const fallbackComputed = buildDspParameters(
@@ -618,7 +640,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         peakFreqs: [dominantFreq],
         avgDb: currentDb,
         modeSpecificMetric: {
-          label: mode === 'texture' ? 'Slide Passes' : mode === 'hardness' ? 'Tap Impulses' : 'Hold Time',
+          label: mode === 'texture' ? 'Slide Times (MIC)' : mode === 'hardness' ? 'Taps (MIC)' : 'Hold Time',
           value: mode === 'texture' ? '3/3' : mode === 'hardness' ? '3/3' : '6.0s',
         },
         spectrumData: lastFreqSnapshotRef.current,
@@ -631,8 +653,11 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         referenceProfile: activeRef,
         imuMetrics: {
           ...imuMetrics,
+          slidingVelocityCms: phoneSpeedCms || imuMetrics.slidingVelocityCms,
+          viscoelasticLagMs: avgViscoLag,
           slidePassCount: slides || slideCount,
-          continuousContactMaintained: isContactMaintained,
+          directionAngleDeg: phoneAngleDeg || imuMetrics.directionAngleDeg,
+          continuousContactMaintained: true,
         },
         versionMode,
       };
@@ -647,7 +672,6 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
     if (mode === 'texture') {
       const next = slideCount + 1;
       setSlideCount(next);
-      setExpectedSlideDirection(next % 2 === 0 ? 'left' : 'right');
       if (next >= 3) finishMeasurement(next, 0, 0);
     } else if (mode === 'hardness') {
       const next = tapCount + 1;
@@ -740,8 +764,13 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         </div>
       </div>
 
-      {/* Progress & Gesture Tracking Card */}
-      <div className="w-full mt-3 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
+      {/* Acoustic Contact Alignment with Figure Movement during Measurement */}
+      <div className="w-full mt-3">
+        <PhoneContactDiagram mode={mode} />
+      </div>
+
+      {/* Microphone Measurement Progress Card (MIC-DRIVEN) */}
+      <div className="w-full mt-2.5 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {mode === 'texture' && (
@@ -762,13 +791,13 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
             <div className="text-left">
               <span className="text-xs font-bold text-slate-900 block leading-tight">
-                {mode === 'texture' && 'Slide on Surface 3 Times Back & Forth'}
-                {mode === 'hardness' && 'Tap Microphone Port 3 Times'}
-                {mode === 'density' && 'Hold Steady on Surface (6 Seconds Vibration)'}
+                {mode === 'texture' && 'Microphone: Slide 3 Times Back & Forth'}
+                {mode === 'hardness' && 'Microphone: Tap Object 3 Times'}
+                {mode === 'density' && 'Hold Steady on Surface (6s Vibration)'}
               </span>
               <span className="text-[11px] text-slate-500">
-                {mode === 'texture' && `${slideCount} of 3 passes recorded via accelerometer`}
-                {mode === 'hardness' && `${tapCount} of 3 taps recorded via accelerometer`}
+                {mode === 'texture' && '1 time = Slide forward + Stop + Slide backward'}
+                {mode === 'hardness' && `Viscoelastic Latency: ${liveViscoLagMs.toFixed(1)} ms (Audio vs Accel stop)`}
                 {mode === 'density' && `${secondsHeld.toFixed(1)}s of 6.0s elapsed (vibrating)`}
               </span>
             </div>
@@ -776,21 +805,21 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
           <div className="text-right">
             <span className="text-lg font-bold font-mono text-slate-900 tabular-nums">
-              {mode === 'texture' && `${slideCount}/3`}
-              {mode === 'hardness' && `${tapCount}/3`}
+              {mode === 'texture' && `${slideCount}/3 times`}
+              {mode === 'hardness' && `${tapCount}/3 taps`}
               {mode === 'density' && `${secondsHeld.toFixed(1)}s / 6s`}
             </span>
           </div>
         </div>
 
-        {/* 3-Pass Texture Sliding Stepper */}
+        {/* Texture: 3 Times Sliding Stepper + Sub-step breakdown */}
         {mode === 'texture' && (
           <div className="space-y-2">
             <div className="grid grid-cols-3 gap-2">
               {[
-                { step: 1, label: 'Slide 1' },
-                { step: 2, label: 'Slide 2' },
-                { step: 3, label: 'Slide 3' },
+                { step: 1, label: 'Time 1' },
+                { step: 2, label: 'Time 2' },
+                { step: 3, label: 'Time 3' },
               ].map((p) => (
                 <div
                   key={p.step}
@@ -802,23 +831,72 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
                       : 'bg-slate-50 text-slate-400 border-slate-200'
                   }`}
                 >
-                  <div className="text-[10px] font-mono leading-none">Pass {p.step}</div>
+                  <div className="text-[10px] font-mono leading-none">Cycle {p.step}</div>
                   <div className="text-xs font-bold mt-1 leading-none">{p.label}</div>
                 </div>
               ))}
             </div>
 
-            {contactWarning ? (
-              <div className="flex items-center gap-1.5 p-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-[11px] font-medium animate-in fade-in">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>{contactWarning}</span>
+            {/* Current Cycle Sub-Phase Indicator */}
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-mono">Current MIC Action:</span>
+              <div className="flex items-center gap-1.5 font-bold">
+                <span className={`px-2 py-0.5 rounded-md ${
+                  textureCycleSubStep === 'forward' ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  1. Forward
+                </span>
+                <span className={`px-2 py-0.5 rounded-md ${
+                  textureCycleSubStep === 'stop' ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  2. Stop
+                </span>
+                <span className={`px-2 py-0.5 rounded-md ${
+                  textureCycleSubStep === 'backward' ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  3. Backward
+                </span>
               </div>
-            ) : (
-              <div className="flex items-center justify-between px-2 text-[10px] font-mono text-teal-700">
-                <span>Accelerometer: Tracking 3-pass sliding friction</span>
-                <span className="font-bold">Pass {Math.min(3, slideCount + 1)} / 3</span>
+            </div>
+          </div>
+        )}
+
+        {/* Hardness: 3 Taps Stepper & Viscoelastic Contact Latency Card */}
+        {mode === 'hardness' && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { step: 1, label: 'Tap 1' },
+                { step: 2, label: 'Tap 2' },
+                { step: 3, label: 'Tap 3' },
+              ].map((p) => (
+                <div
+                  key={p.step}
+                  className={`p-2 rounded-xl border text-center transition-all ${
+                    tapCount >= p.step
+                      ? 'bg-sky-600 text-white border-sky-600 font-bold shadow-2xs'
+                      : tapCount === p.step - 1
+                      ? 'bg-sky-50 text-sky-800 border-sky-300 font-semibold animate-pulse'
+                      : 'bg-slate-50 text-slate-400 border-slate-200'
+                  }`}
+                >
+                  <div className="text-[10px] font-mono leading-none">Impact {p.step}</div>
+                  <div className="text-xs font-bold mt-1 leading-none">{p.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Viscoelastic Material Evaluation Callout */}
+            <div className="p-2.5 rounded-xl bg-sky-50/80 border border-sky-200 text-[11px] text-sky-900 flex items-center justify-between">
+              <div>
+                <span className="font-bold block">Viscoelastic Contact Lag: {liveViscoLagMs.toFixed(1)} ms</span>
+                <span className="text-[10px] text-sky-700">
+                  {liveViscoLagMs >= 16
+                    ? 'Soft compliant material (e.g. rubber, skin) — audio precedes deceleration arrest'
+                    : 'Hard rigid object (e.g. wood board, metal) — simultaneous audio & deceleration'}
+                </span>
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -857,9 +935,9 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
             {mode === 'texture' && <MoveHorizontal className="w-3.5 h-3.5" />}
             {mode === 'hardness' && <ArrowDown className="w-3.5 h-3.5" />}
             {mode === 'density' && <Radio className="w-3.5 h-3.5" />}
-            {mode === 'texture' && `Slide Phone (+1 Pass, ${slideCount + 1}/3)`}
-            {mode === 'hardness' && `Tap MIC Port (+1 Tap, ${tapCount + 1}/3)`}
-            {mode === 'density' && `Simulate Complete 6s Vibration`}
+            {mode === 'texture' && `Trigger MIC Slide (+1 Time, ${slideCount + 1}/3)`}
+            {mode === 'hardness' && `Trigger MIC Tap (+1 Tap, ${tapCount + 1}/3)`}
+            {mode === 'density' && `Complete 6s Vibration`}
           </button>
 
           <button

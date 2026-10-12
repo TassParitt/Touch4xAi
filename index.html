@@ -5,22 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       // AI Studio environment constraint: HMR is disabled, ignore Vite WebSocket errors
-      window.addEventListener('unhandledrejection', function(event) {
-        if (event?.reason?.message && (
-          event.reason.message.includes('WebSocket') ||
-          event.reason.message.includes('WebSocket closed without opened')
-        )) {
-          event.preventDefault();
-        }
-      });
-      window.addEventListener('error', function(event) {
-        if (event?.message && (
-          event.message.includes('WebSocket') ||
-          event.message.includes('WebSocket closed without opened')
-        )) {
-          event.preventDefault();
-        }
-      });
+      (function() {
+        const isWsError = (str) => {
+          if (!str) return false;
+          const s = String(str);
+          return s.includes('WebSocket closed without opened') ||
+            (s.includes('[vite]') && s.includes('WebSocket')) ||
+            (s.includes('WebSocket') && s.includes('connection to') && s.includes('failed'));
+        };
+
+        const origError = console.error;
+        console.error = function(...args) {
+          const msg = args.map(a => (a && a.message) ? a.message : (a && a.stack) ? a.stack : String(a)).join(' ');
+          if (isWsError(msg)) return;
+          origError.apply(console, args);
+        };
+
+        const origWarn = console.warn;
+        console.warn = function(...args) {
+          const msg = args.map(a => (a && a.message) ? a.message : String(a)).join(' ');
+          if (isWsError(msg)) return;
+          origWarn.apply(console, args);
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          const msg = event?.reason?.message || String(event?.reason || '');
+          if (isWsError(msg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          const msg = event?.message || event?.error?.message || '';
+          if (isWsError(msg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
     </script>
     <title>Touch4xAi · Smart Touch for Training AI</title>
     <meta name="description" content="Touch4xAi - Smart Touch for training AI with calibrated forearm skin baseline reference, relative differential scale, and 6-axis IMU surface measurement." />

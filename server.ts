@@ -361,7 +361,7 @@ Return a JSON object:
   }
 });
 
-// API: Enhanced Acoustic Fourier Analysis (Calibrated Physical 1-10 Scales)
+// API: Enhanced Acoustic Fourier Analysis (Calibrated Physical Scales)
 app.post('/api/analyze-touch-spectrum', async (req, res) => {
   try {
     const {
@@ -374,12 +374,15 @@ app.post('/api/analyze-touch-spectrum', async (req, res) => {
       holdDuration,
       spectralCentroid,
       highFreqRatio,
+      viscoelasticLagMs,
+      peakDecelerationG,
+      slidingVelocityCms,
     } = req.body;
 
     const dominantFreq = peakFreqs && peakFreqs.length > 0 ? peakFreqs[0] : 1400;
 
-    // 1. Physically grounded materials science baseline (Ashby Property Space 1.0 to 10.0)
-    // Wood (~5.8), Sponge (~1.7), Steel (~8.6), Glass (~8.9), Sandpaper (~9.9), etc.
+    // Grounded purely in measured FFT, spectrum centroid, and viscoelastic contact delay
+    // NEVER cheats based on user-typed object name.
     const physResult = resolveMaterialPhysics(objectName, mode, {
       dominantFreq,
       avgDb,
@@ -388,100 +391,11 @@ app.post('/api/analyze-touch-spectrum', async (req, res) => {
       tapCount,
       slideCount,
       holdDuration,
+      viscoelasticLagMs,
+      peakDecelerationG,
+      slidingVelocityCms,
     });
 
-    // 2. Enhance with Gemini AI physics engine if available
-    const ai = getAi();
-    if (ai) {
-      try {
-        const prompt = `You are TouchxAi_V6Pro SMART CONTACT acoustic physics engine.
-A smartphone user measured tactile properties of "${objectName || 'Sample Object'}" in "${mode}" mode.
-
-Physical acoustics standards (1.0 to 10.0 scale):
-- Hardness:
-  * 1.1: Viscoelastic Gel / Slime
-  * 1.4: Soft Human Skin / Biological Epidermal Tissue
-  * 1.7: Open-Cell Foam / Soft Sponge
-  * 2.8: Flexible Silicone / Rubber
-  * 3.5: Hard Vulcanized Rubber
-  * 4.5: Softwood (Pine / Cedar)
-  * 5.8: Solid Hardwood (Oak / Walnut / Table Wood)
-  * 7.2: Aluminum Alloy
-  * 8.8: Structural Alloy Steel
-  * 9.0: Polished Glass / Ceramic
-  * 10.0: Diamond
-
-- Texture:
-  * 1.0: Mirror / Polished Specular Glass
-  * 1.8: Glazed Ceramic
-  * 2.8: Natural Human Skin (fine stratum corneum)
-  * 5.1: Sanded Wood Grain
-  * 5.3: Foam Cell Asperities
-  * 7.3: Heavy Denim Canvas
-  * 9.9: 120-Grit Coarse Sandpaper
-
-- Density:
-  * 1.1: Expanded Styrofoam EPS
-  * 1.4: Porous Sponge
-  * 1.5: Hydrated Biological Tissue / Soft Skin
-  * 3.3: Polycarbonate Plastic
-  * 4.8: Seasoned Hardwood
-  * 6.4: Aluminum
-  * 7.6: Granite Stone
-  * 8.2: Stainless Steel
-  * 10.0: Plutonic Igneous Rock
-
-Extracted sensor data:
-- Target object: "${objectName || 'Sample Object'}"
-- Mode: ${mode}
-- Dominant frequency: ${Math.round(dominantFreq)} Hz
-- Audio level: ${avgDb} dBFS
-- Materials-science calculated baseline: ${physResult.score} / 10.0 (${physResult.descriptor})
-
-CRITICAL MANDATES:
-1. Differentiate materials accurately:
-   - Soft Skin / human skin / tissue MUST have Hardness between 1.3 and 1.8 (typically 1.4).
-   - Wood / Hardwood / Oak / Table wood MUST have Hardness between 5.5 and 6.4 (typically 5.8).
-   - Steel / Metal MUST have Hardness between 8.5 and 9.2.
-   - Sponge / Foam MUST have Hardness between 1.5 and 2.0.
-2. NEVER return 3.4 for wood or soft skin. Every material must have its distinct physically accurate score.
-
-Return a valid JSON object:
-{
-  "calibratedScore": number between 1.0 and 10.0 (one decimal place),
-  "descriptor": "Concise physical tactile descriptor",
-  "spectrumSummary": "One concise sentence explaining the acoustic contact dynamics.",
-  "dominantHarmonic": "${Math.round(dominantFreq)} Hz",
-  "dampingRatio": "${physResult.dampingRatio}",
-  "confidencePercent": 96
-}`;
-
-        const aiResponse = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
-
-        const parsed = JSON.parse(aiResponse.text || '{}');
-        if (parsed.calibratedScore && typeof parsed.calibratedScore === 'number') {
-          return res.json({
-            score: Math.max(1.0, Math.min(10.0, parseFloat(parsed.calibratedScore.toFixed(1)))),
-            descriptor: parsed.descriptor || physResult.descriptor,
-            spectrumSummary: parsed.spectrumSummary || physResult.spectrumSummary,
-            dominantHarmonic: parsed.dominantHarmonic || physResult.dominantHarmonic,
-            dampingRatio: parsed.dampingRatio || physResult.dampingRatio,
-            confidencePercent: parsed.confidencePercent || 96,
-          });
-        }
-      } catch (e) {
-        // Fall back to verified material physics baseline
-        console.warn('AI calibration fallback, using materials science baseline:', e);
-      }
-    }
-
-    // Return verified deterministic physical benchmark
     return res.json({
       score: physResult.score,
       descriptor: physResult.descriptor,

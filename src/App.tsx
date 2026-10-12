@@ -30,7 +30,6 @@ import { AudioFourierVisualizer } from './components/AudioFourierVisualizer';
 import { SaveResultModal } from './components/SaveResultModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { AuthBar } from './components/AuthBar';
-import { TrendAnalysisCard } from './components/TrendAnalysisCard';
 import { CompareResultsModal } from './components/CompareResultsModal';
 import { TouchxAiLogo } from './components/TouchxAiLogo';
 import { MaterialAnalysisTable } from './components/MaterialAnalysisTable';
@@ -64,6 +63,7 @@ export default function App() {
   const [activeReference, setActiveReferenceState] = useState<ReferenceProfile>(() => getActiveReference());
   const [isCalibratingBaseline, setIsCalibratingBaseline] = useState(false);
   const [isCalibrationModalOpen, setIsCalibrationModalOpen] = useState(false);
+  const [isCalibrationRequiredModalOpen, setIsCalibrationRequiredModalOpen] = useState(false);
 
   // Auto-detected smartphone device profile
   const [detectedPhone, setDetectedPhone] = useState<DetectedSmartphone>({
@@ -249,17 +249,8 @@ export default function App() {
             <AuthBar onUserChanged={setCurrentUser} />
 
             <button
-              onClick={() => setIsR2ModalOpen(true)}
-              className="p-2 rounded-xl text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors relative"
-              title="Cloudflare R2 Bucket Sync (touch4xai)"
-            >
-              <Cloud className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 ring-2 ring-white" />
-            </button>
-
-            <button
               onClick={() => setIsHistoryDrawerOpen(true)}
-              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors relative"
+              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors relative cursor-pointer"
               title="Saved Measurements"
             >
               <FolderArchive className="w-4 h-4" />
@@ -291,149 +282,89 @@ export default function App() {
               detectedPhoneModel={detectedPhone.fullName}
             />
 
-            {/* 3) Calibration & Reference Baseline (BEFORE Measuring Parameter) */}
-            <div className="w-full bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs text-left">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center font-bold text-xs border border-teal-200/60">
-                    <Compass className="w-4 h-4 text-teal-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider block">
-                      Calibration & Reference Baseline
-                    </h3>
-                    <p className="text-[11px] text-slate-500">
-                      Establishes 0% reference object for relative metrology
-                    </p>
-                  </div>
-                </div>
-
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                  0% Ref: {activeReference.name}
-                </span>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3">
-                <div className="text-left space-y-1">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block font-semibold">
-                    Compare Against (Reference):
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-extrabold text-slate-900">
-                      {activeReference.name}
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-teal-100 text-teal-800 font-semibold">
-                      0% Reference
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500 pt-0.5">
-                    <span>Texture: {activeReference.textureValue.toFixed(1)}</span>
-                    <span>•</span>
-                    <span>Hardness: {activeReference.hardnessValue.toFixed(1)}</span>
-                    <span>•</span>
-                    <span>Density: {activeReference.densityValue.toFixed(1)}</span>
-                  </div>
-                </div>
-
+            {/* Requirement 1: Only ONE tab of calibration before measuring modes.
+                Bigger tabs with bigger text in the tab function.
+                Minimal version without walls of text. */}
+            <div className="w-full bg-white border border-slate-200/90 rounded-2xl p-3 shadow-xs text-left space-y-2.5">
+              <div className="grid grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                {/* 1. Calibration Tab (First, before measuring modes) */}
                 <button
                   type="button"
                   onClick={() => setIsCalibrationModalOpen(true)}
-                  className="px-3.5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
+                  className="py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 bg-white text-slate-900 border border-slate-200/90 shadow-xs hover:bg-slate-50 active:scale-[0.98] cursor-pointer"
+                  title="Open Calibration window (Object name, function, how to, start and reset)"
                 >
-                  <Crosshair className="w-3.5 h-3.5" />
-                  <span>Calibrate / Compare</span>
+                  <Compass className="w-4 h-4 text-teal-600 shrink-0" />
+                  <span className="truncate">Calibration</span>
                 </button>
-              </div>
-            </div>
 
-            {/* 4) Measuring Parameter Tabs: Texture, Hardness, Density */}
-            <div className="w-full bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs text-left">
-              <div className="flex items-center justify-between mb-2.5">
-                <label className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Measuring Parameter
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-teal-700 font-medium capitalize">
-                    {selectedMode} Mode
-                  </span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
-                    Ref: 0% ({activeReference.name})
-                  </span>
-                </div>
-              </div>
-
-              {/* Segmented Mode Selector Buttons (Texture, Hardness, Density) */}
-              <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                {/* 2. Texture Measuring Mode */}
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedMode('texture');
                     setIsCalibratingBaseline(false);
                   }}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+                  className={`py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 active:scale-[0.98] cursor-pointer ${
                     selectedMode === 'texture'
-                      ? 'bg-white text-teal-800 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  Texture
+                  <span className="truncate">Texture</span>
                 </button>
 
+                {/* 3. Hardness Measuring Mode */}
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedMode('hardness');
                     setIsCalibratingBaseline(false);
                   }}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+                  className={`py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 active:scale-[0.98] cursor-pointer ${
                     selectedMode === 'hardness'
-                      ? 'bg-white text-sky-800 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  Hardness
+                  <span className="truncate">Hardness</span>
                 </button>
 
+                {/* 4. Density Measuring Mode */}
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedMode('density');
                     setIsCalibratingBaseline(false);
                   }}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+                  className={`py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 active:scale-[0.98] cursor-pointer ${
                     selectedMode === 'density'
-                      ? 'bg-white text-rose-800 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  Density
+                  <span className="truncate">Density</span>
                 </button>
               </div>
 
-              {/* How to measure dropdown */}
-              <div className="mt-3">
-                <button
-                  onClick={() => setIsHowToOpen(!isHowToOpen)}
-                  className="w-full flex items-center justify-between py-1.5 text-xs text-slate-600 font-semibold hover:text-slate-900 transition-colors"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5 text-teal-600" />
-                    How to measure {selectedMode}:
+              {/* Minimal status bar */}
+              <div className="flex items-center justify-between px-1 text-xs text-slate-500 font-medium">
+                <span>
+                  Mode: <strong className="text-slate-900 uppercase font-bold">{selectedMode}</strong>
+                </span>
+                {activeReference.isCalibrated && activeReference.name ? (
+                  <span className="font-mono text-[11px] text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                    0% Ref: {activeReference.name}
                   </span>
-                  {isHowToOpen ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  )}
-                </button>
-
-                {isHowToOpen && (
-                  <div className="mt-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 animate-in fade-in">
-                    <p className="font-medium text-slate-800 leading-relaxed">
-                      {measurementGuides[selectedMode as 'texture' | 'hardness' | 'density']}
-                    </p>
-                    <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Contact Area: Microphone (MIC) Port</span>
-                      <span className="font-mono text-[10px]">Continuous Surface Contact</span>
-                    </div>
-                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsCalibrationModalOpen(true)}
+                    className="font-mono text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300 hover:bg-amber-100 transition-colors font-bold flex items-center gap-1 cursor-pointer"
+                    title="Tap to calibrate reference object"
+                  >
+                    <span>⚠️ 0% Ref: Not Calibrated (Tap to Set Up)</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -450,13 +381,17 @@ export default function App() {
           <div className="flex-1 p-4 pb-20 space-y-4 overflow-y-auto animate-in fade-in duration-150">
             <div className="flex items-center justify-between">
               <button
-                onClick={() => setCurrentScreen(1)}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1"
+                onClick={() => {
+                  setIsCalibratingBaseline(false);
+                  setCurrentObject({ name: '', material: '', description: '' });
+                  setCurrentScreen(1);
+                }}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
               >
-                ← Back to Setup
+                ← Back to Enter New Object
               </button>
               <span className="text-[11px] uppercase tracking-wider font-bold text-teal-700">
-                Screen 2 · Live Measurement
+                Live Sensor Measurement
               </span>
             </div>
 
@@ -496,10 +431,14 @@ export default function App() {
             {/* Top Navigation */}
             <div className="flex items-center justify-between">
               <button
-                onClick={() => setCurrentScreen(1)}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1"
+                onClick={() => {
+                  setIsCalibratingBaseline(false);
+                  setCurrentObject({ name: '', material: '', description: '' });
+                  setCurrentScreen(1);
+                }}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
               >
-                ← Back to Setup
+                ← Back to Enter New Object
               </button>
               <span className="text-[11px] uppercase tracking-wider font-bold text-teal-700">
                 Measurement Result
@@ -586,11 +525,12 @@ export default function App() {
                 <button
                   onClick={() => {
                     setIsCalibratingBaseline(false);
+                    setCurrentObject({ name: '', material: '', description: '' });
                     setCurrentScreen(1);
                   }}
-                  className="flex-1 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  className="flex-1 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <span>New Object</span>
+                  <span>← New Object (Blank)</span>
                 </button>
               </div>
             </div>
@@ -712,12 +652,6 @@ export default function App() {
                       priorRecords={[...sessionHistory, ...savedRecords]}
                     />
                   )}
-
-                  {/* 4. Trend Analysis */}
-                  <TrendAnalysisCard
-                    currentResult={analysisResult}
-                    allRecords={[...sessionHistory, ...savedRecords]}
-                  />
                 </div>
               )}
             </div>
@@ -731,14 +665,21 @@ export default function App() {
           {currentScreen === 1 && (
             <button
               onClick={() => {
+                // Requirement: Inform user to set up the reference of calibration before measurement testing
+                if (!activeReference.isCalibrated || !activeReference.name.trim()) {
+                  setIsCalibrationRequiredModalOpen(true);
+                  return;
+                }
                 setIsCalibratingBaseline(false);
                 setCurrentScreen(2);
               }}
-              className="w-full h-12 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 active:scale-[0.99] transition-all"
+              className="w-full h-12 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 active:scale-[0.99] transition-all cursor-pointer"
             >
               <span>Measurement ({selectedMode.toUpperCase()})</span>
               <span className="text-slate-400 font-normal">
-                (vs {activeReference.name} 0% Ref)
+                {activeReference.isCalibrated && activeReference.name
+                  ? `(vs ${activeReference.name} 0% Ref)`
+                  : '(Calibration Required)'}
               </span>
               <ArrowRight className="w-4 h-4 ml-1 text-teal-400" />
             </button>
@@ -758,10 +699,14 @@ export default function App() {
 
           {currentScreen === 3 && (
             <button
-              onClick={() => setCurrentScreen(1)}
-              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-all"
+              onClick={() => {
+                setIsCalibratingBaseline(false);
+                setCurrentObject({ name: '', material: '', description: '' });
+                setCurrentScreen(1);
+              }}
+              className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-all cursor-pointer"
             >
-              <span>Done · Measure Another Item</span>
+              <span>← Measure Another Item / New Object</span>
             </button>
           )}
         </footer>
@@ -777,6 +722,7 @@ export default function App() {
           onStartCalibration={(calMode, refName) => {
             setSelectedMode(calMode);
             setIsCalibratingBaseline(true);
+            setCurrentObject({ name: refName || 'Reference Standard', material: '', description: '' });
             setCurrentScreen(2);
           }}
         />
@@ -794,6 +740,12 @@ export default function App() {
             result={analysisResult}
             onSaveConfirmed={handleSaveConfirmed}
             priorRecords={[...sessionHistory, ...savedRecords]}
+            onGoToFirstWindow={() => {
+              setIsSaveModalOpen(false);
+              setIsCalibratingBaseline(false);
+              setCurrentObject({ name: '', material: '', description: '' });
+              setCurrentScreen(1);
+            }}
           />
         )}
 
@@ -819,6 +771,61 @@ export default function App() {
           onClose={() => setIsR2ModalOpen(false)}
           savedRecords={savedRecords}
         />
+
+        {/* Informing modal: Reference Calibration Required before Measurement */}
+        {isCalibrationRequiredModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in">
+            <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 text-left space-y-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                <Compass className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">Calibration Reference Status</h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  You have not calibrated a reference object yet. You can set up your reference now, or continue measuring without reference using standard baseline defaults.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                {/* 1. Continue measurement without reference tab */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCalibrationRequiredModalOpen(false);
+                    setIsCalibratingBaseline(false);
+                    setCurrentScreen(2);
+                  }}
+                  className="w-full h-11 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>Continue Measurement Without Reference</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 2. Set Up Reference Now tab */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCalibrationRequiredModalOpen(false)}
+                    className="px-3.5 h-11 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCalibrationRequiredModalOpen(false);
+                      setIsCalibrationModalOpen(true);
+                    }}
+                    className="flex-1 h-11 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-teal-600/20 active:scale-[0.99] transition-all cursor-pointer"
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Set Up Reference (Smart Calibration)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

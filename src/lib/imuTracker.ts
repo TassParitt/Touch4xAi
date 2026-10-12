@@ -142,56 +142,60 @@ export class IMUSensorTracker {
   }
 
   /**
-   * Returns current measured viscoelastic time lag in milliseconds
+   * Returns current measured viscoelastic contact lag in milliseconds.
+   * Real sensor timing: difference between audio contact transient and deceleration arrest.
    */
   getViscoelasticLag(): number {
     if (this.lastLagMs > 0) return this.lastLagMs;
     if (this.audioImpactTime && this.imuStopTime) {
       return Math.max(1.0, this.imuStopTime - this.audioImpactTime);
     }
-    return 2.0; // fallback hard stop
+    return 18.0; // neutral default
   }
 
   /**
-   * Simulates synthetic physics lag when running on desktop or simulation mode
+   * Computes phone tilt angle relative to flat surface normal (0° to 90°)
    */
-  simulatePhysicsLag(materialName: string, mode: 'texture' | 'hardness' | 'density'): number {
-    const lower = (materialName || '').toLowerCase();
-    if (lower.includes('skin') || lower.includes('flesh') || lower.includes('cheek') || lower.includes('finger')) {
-      return parseFloat((24.0 + Math.random() * 8.0).toFixed(1)); // 24-32 ms
-    }
-    if (lower.includes('sponge') || lower.includes('foam') || lower.includes('pillow')) {
-      return parseFloat((38.0 + Math.random() * 14.0).toFixed(1)); // 38-52 ms
-    }
-    if (lower.includes('silicone') || lower.includes('rubber') || lower.includes('gel')) {
-      return parseFloat((18.0 + Math.random() * 7.0).toFixed(1)); // 18-25 ms
-    }
-    if (lower.includes('wood') || lower.includes('oak') || lower.includes('timber') || lower.includes('table')) {
-      return parseFloat((1.8 + Math.random() * 1.2).toFixed(1)); // 1.8 - 3.0 ms
-    }
-    if (lower.includes('steel') || lower.includes('metal') || lower.includes('iron') || lower.includes('aluminum')) {
-      return parseFloat((0.8 + Math.random() * 0.6).toFixed(1)); // < 1.4 ms
-    }
-    if (lower.includes('glass') || lower.includes('ceramic') || lower.includes('tile')) {
-      return parseFloat((0.6 + Math.random() * 0.5).toFixed(1)); // < 1.1 ms
-    }
-    return parseFloat((2.5 + Math.random() * 2.0).toFixed(1));
+  getAngleDeg(): number {
+    const ax = this.accelerometer.x;
+    const ay = this.accelerometer.y;
+    const az = this.accelerometer.z || 9.81;
+    const total = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (total === 0) return 0;
+    // Angle between phone normal (z) and gravity vector
+    const cosAngle = Math.min(1.0, Math.max(-1.0, Math.abs(az) / total));
+    const angleRad = Math.acos(cosAngle);
+    return Math.round((angleRad * 180) / Math.PI);
   }
 
   /**
-   * Returns complete metrics snapshot
+   * Computes phone motion direction label
    */
-  getMetrics(targetMaterialName?: string): ImuMetrics {
-    const speedCms = this.peakSpeedCms > 0 ? this.peakSpeedCms : 18.2;
+  getDirectionLabel(): string {
+    const ax = this.accelerometer.x;
+    const ay = this.accelerometer.y;
+    if (Math.abs(ax) < 0.4 && Math.abs(ay) < 0.4) {
+      return 'Stationary';
+    }
+    if (Math.abs(ax) >= Math.abs(ay)) {
+      return ax < 0 ? 'Forward ↗' : 'Backward ↙';
+    } else {
+      return ay < 0 ? 'Upward ↑' : 'Downward ↓';
+    }
+  }
+
+  /**
+   * Returns complete metrics snapshot.
+   * NEVER infers kinematics from targetMaterialName!
+   */
+  getMetrics(_targetMaterialName?: string): ImuMetrics {
+    const speedCms = this.currentSpeedCms > 0 ? this.currentSpeedCms : (this.peakSpeedCms > 0 ? this.peakSpeedCms : 18.2);
     let slidingStatus: 'optimal' | 'too_slow' | 'too_fast' | 'steady' = 'optimal';
     if (speedCms < 5.0) slidingStatus = 'too_slow';
     else if (speedCms > 30.0) slidingStatus = 'too_fast';
 
-    const lag = this.lastLagMs > 0
-      ? this.lastLagMs
-      : targetMaterialName
-      ? this.simulatePhysicsLag(targetMaterialName, 'hardness')
-      : 2.5;
+    const lag = this.lastLagMs > 0 ? this.lastLagMs : this.getViscoelasticLag();
+    const angle = this.getAngleDeg();
 
     return {
       slidingVelocityCms: parseFloat(speedCms.toFixed(1)),
@@ -200,8 +204,10 @@ export class IMUSensorTracker {
       viscoelasticLagMs: parseFloat(lag.toFixed(1)),
       peakDecelerationG: this.peakDecelerationG || 2.4,
       slidingStatus,
-      directionAngleDeg: 88,
+      directionAngleDeg: angle,
       sensorSampleCount: this.sampleCount,
+      accelerometer: { ...this.accelerometer },
+      gyroscope: { ...this.gyroscope },
     };
   }
 

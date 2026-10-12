@@ -19,6 +19,10 @@ interface SignalInput {
   tapCount?: number;
   slideCount?: number;
   holdDuration?: number;
+  viscoelasticLagMs?: number;
+  peakDecelerationG?: number;
+  slidingVelocityCms?: number;
+  zeroCrossingRate?: number;
 }
 
 interface BenchmarkProfile {
@@ -497,121 +501,144 @@ const MATERIAL_TAXONOMY: Array<{ keywords: string[]; profile: BenchmarkProfile }
 /**
  * Resolves verified physical material benchmarks for any object name and mode.
  * Grounded in the 1.0 - 10.0 Ashby material space.
+/**
+ * Pure physics & DSP metrology resolver.
+ * CRITICAL RULE: NEVER infer scores from typed object names.
+ * All properties are calculated strictly from measured physical signals:
+ * - Dominant audio frequency (FFT)
+ * - Spectral Centroid & High-Frequency Energy Ratio (Micro-Acoustic Friction)
+ * - Viscoelastic Contact Latency Δt_visco (Audio impact to IMU arrest)
+ * - RMS power (dBFS) and structural vibration transmission coupling
  */
 export function resolveMaterialPhysics(
-  objectName: string,
+  _objectName: string,
   mode: MeasureMode,
   signals?: SignalInput
 ): MaterialPhysicsResult {
-  const cleanName = (objectName || '').trim().toLowerCase();
-
-  // Find matching taxonomy entry by keyword search
-  let matchedProfile: BenchmarkProfile | null = null;
-  if (cleanName.length > 0) {
-    for (const item of MATERIAL_TAXONOMY) {
-      if (item.keywords.some((kw) => cleanName.includes(kw))) {
-        matchedProfile = item.profile;
-        break;
-      }
-    }
-  }
-
-  // Base values from material taxonomy or fallback to acoustic frequency inference
-  let baseScore = 5.0;
-  let category = 'composite';
-  let descriptor = '';
-  let dominantHz = 1400;
-  let dampingRatio = '0.14 ζ';
-  let impedance = '2.8 × 10⁶ kg/(m²·s)';
-
   const activeMode: 'hardness' | 'texture' | 'density' = mode === 'calibration' ? 'hardness' : mode;
 
-  if (matchedProfile) {
-    baseScore = matchedProfile[activeMode];
-    category = matchedProfile.category;
-    descriptor = matchedProfile.descriptor[activeMode];
-    dominantHz = matchedProfile.dominantHarmonicHz[activeMode];
-    dampingRatio = matchedProfile.dampingRatio;
-    impedance = matchedProfile.acousticImpedanceZ;
-  } else {
-    // Dynamic acoustic inference for unknown sample names based on measured physical signals
-    const freq = signals?.dominantFreq || 1400;
-    const avgDb = signals?.avgDb || -45;
-    const hfRatio = signals?.highFreqRatio ?? 0.35;
-    const centroid = signals?.spectralCentroid || freq;
+  const freq = signals?.dominantFreq || (activeMode === 'hardness' ? 220 : activeMode === 'texture' ? 1100 : 160);
+  const avgDb = signals?.avgDb ?? -42;
+  const centroid = signals?.spectralCentroid || (activeMode === 'hardness' ? 350 : activeMode === 'texture' ? 1200 : 220);
+  const hfRatio = signals?.highFreqRatio ?? 0.20;
+  const viscoLag = signals?.viscoelasticLagMs ?? (signals?.holdDuration ? 2.5 : 26.0);
 
-    if (mode === 'hardness') {
-      // Hardness: Hertzian contact resonant impulse frequency mapping
-      // < 450 Hz: Soft biological / foam (< 2.2)
-      // 450 - 1100 Hz: Viscoelastic rubber / soft polymers (2.5 - 3.8)
-      // 1100 - 2600 Hz: Hardwood / dense polymers / timber (5.2 - 6.8)
-      // 2600 - 4200 Hz: Structural metals / stones (7.2 - 8.4)
-      // > 4200 Hz: Tool steels / ceramics / glass (8.5 - 9.8)
-      if (freq < 450) {
-        baseScore = parseFloat((1.2 + (freq / 450) * 1.0).toFixed(1));
-        descriptor = 'Ultra-Compliant Soft Damped Tissue / Foam';
-        dampingRatio = '0.42 ζ';
-      } else if (freq < 1100) {
-        baseScore = parseFloat((2.5 + ((freq - 450) / 650) * 1.5).toFixed(1));
-        descriptor = 'Flexible Elastomer / High Damping Solid';
-        dampingRatio = '0.30 ζ';
-      } else if (freq < 2600) {
-        baseScore = parseFloat((5.2 + ((freq - 1100) / 1500) * 1.6).toFixed(1));
-        descriptor = 'Solid Hardwood / Rigid Cellular Matrix';
-        dampingRatio = '0.15 ζ';
-      } else if (freq < 4200) {
-        baseScore = parseFloat((7.2 + ((freq - 2600) / 1600) * 1.3).toFixed(1));
-        descriptor = 'High-Stiffness Structural Solid / Light Alloy';
-        dampingRatio = '0.08 ζ';
-      } else {
-        baseScore = parseFloat((8.6 + Math.min(1.2, ((freq - 4200) / 4000) * 1.2)).toFixed(1));
-        descriptor = 'Ultra-Rigid Specular Ceramic / Steel Solid';
-        dampingRatio = '0.04 ζ';
-      }
-      dominantHz = Math.round(freq);
-    } else if (mode === 'texture') {
-      // Texture: micro-friction high frequency energy ratio (>3kHz)
-      if (centroid < 1200) {
-        baseScore = parseFloat((1.0 + (centroid / 1200) * 1.2).toFixed(1));
-        descriptor = 'Smooth Low-Friction Surface';
-      } else if (centroid < 3200) {
-        baseScore = parseFloat((2.5 + ((centroid - 1200) / 2000) * 2.8).toFixed(1));
-        descriptor = 'Natural Grain / Tactile Surface Texture';
-      } else {
-        baseScore = parseFloat((5.8 + Math.min(4.1, hfRatio * 5.0)).toFixed(1));
-        descriptor = 'Coarse Abrasive / High-Friction Asperities';
-      }
-      dominantHz = Math.round(centroid);
+  let score = 5.0;
+  let category = 'measured_sample';
+  let descriptor = '';
+  let dominantHz = Math.round(freq);
+  let dampingRatio = '0.15 ζ';
+  let impedance = '1.8 × 10⁶ kg/(m²·s)';
+
+  if (activeMode === 'hardness') {
+    // Hardness: Hertzian contact mechanics evaluated through measured viscoelastic contact latency Δt_visco
+    // and resonant impact frequency f_dom.
+    // Soft biological tissue / rubber: Δt_visco >= 20 ms, f_dom < 350 Hz -> score 1.2 - 2.2
+    // Medium elastomer / soft polymer: Δt_visco 8 - 18 ms, f_dom 450 - 1100 Hz -> score 2.5 - 4.5
+    // Hardwood / timber / dense plastics: Δt_visco 1.8 - 4.5 ms, f_dom 1200 - 2400 Hz -> score 5.2 - 6.6
+    // Metals / stones: Δt_visco 0.8 - 1.8 ms, f_dom 2500 - 4200 Hz -> score 7.2 - 8.6
+    // Ultra-rigid glass / ceramics: Δt_visco < 0.8 ms, f_dom > 4200 Hz -> score 8.8 - 10.0
+
+    if (viscoLag >= 22.0 || freq < 320) {
+      // Compliant biological tissue / soft foam / soft gel
+      // Skin reference standard: lag ~28ms, freq ~220Hz -> score 1.4
+      const lagNorm = Math.min(1.0, Math.max(0.0, (viscoLag - 18) / 30));
+      const freqNorm = Math.min(1.0, Math.max(0.0, freq / 350));
+      score = parseFloat((1.1 + (1.0 - lagNorm) * 0.5 + freqNorm * 0.4).toFixed(1));
+      category = 'elastomers';
+      descriptor = 'Compliant Viscoelastic Surface / High Mechanical Damping';
+      dampingRatio = `${(0.38 + lagNorm * 0.16).toFixed(2)} ζ`;
+      impedance = '1.6 × 10⁵ kg/(m²·s)';
+    } else if (viscoLag >= 6.0 || freq < 1200) {
+      // Flexible elastomer / firm polymer
+      const lagFactor = (22.0 - viscoLag) / 16.0;
+      score = parseFloat((2.5 + lagFactor * 2.2).toFixed(1));
+      category = 'polymers';
+      descriptor = 'Flexible Solid / Moderate Mechanical Damping';
+      dampingRatio = `${(0.20 + (viscoLag / 30) * 0.15).toFixed(2)} ζ`;
+      impedance = '1.2 × 10⁶ kg/(m²·s)';
+    } else if (viscoLag >= 2.0 || freq < 2600) {
+      // Rigid timber / hardwood / structural polymer
+      const freqFactor = (freq - 1200) / 1400;
+      score = parseFloat((5.0 + Math.min(1.8, Math.max(0.0, freqFactor * 1.8))).toFixed(1));
+      category = 'woods';
+      descriptor = 'Solid Rigid Matrix / Low Contact Compliance';
+      dampingRatio = '0.14 ζ';
+      impedance = '2.8 × 10⁶ kg/(m²·s)';
+    } else if (viscoLag >= 1.0 || freq < 4500) {
+      // Structural metal / stone / hard composite
+      const freqFactor = (freq - 2600) / 1900;
+      score = parseFloat((7.2 + Math.min(1.5, Math.max(0.0, freqFactor * 1.5))).toFixed(1));
+      category = 'metals';
+      descriptor = 'High-Stiffness Structural Solid / Fast Rebound';
+      dampingRatio = '0.07 ζ';
+      impedance = '6.5 × 10⁶ kg/(m²·s)';
     } else {
-      // Density: vibration coupling power and hold time
-      const couplingFactor = Math.min(1.0, Math.max(0.0, (avgDb + 65) / 35));
-      baseScore = parseFloat((1.2 + couplingFactor * 8.0).toFixed(1));
-      dominantHz = 240;
-      descriptor = baseScore <= 2.5
-        ? 'Lightweight Cellular Material'
-        : baseScore <= 5.5
-        ? 'Medium Density Solid'
-        : 'Dense Heavy Structure';
+      // Specular ceramic / tool steel / diamond
+      score = parseFloat((8.8 + Math.min(1.2, ((freq - 4500) / 4000) * 1.2)).toFixed(1));
+      category = 'ceramics';
+      descriptor = 'Ultra-Rigid Solid / Near-Zero Rebound Delay';
+      dampingRatio = '0.03 ζ';
+      impedance = '14.2 × 10⁶ kg/(m²·s)';
+    }
+  } else if (activeMode === 'texture') {
+    // Texture: Micro-acoustic tribological friction spectrum
+    // Smooth skin / glass: centroid < 1400 Hz, hfRatio < 0.25 -> score 1.0 - 3.0
+    // Natural grain / cloth: centroid 1600 - 3200 Hz, hfRatio 0.30 - 0.50 -> score 3.5 - 6.5
+    // Coarse abrasive: centroid > 3500 Hz, hfRatio > 0.60 -> score 7.0 - 10.0
+    const normCentroid = Math.min(1.0, Math.max(0.0, (centroid - 500) / 5000));
+    const normHf = Math.min(1.0, Math.max(0.0, hfRatio / 0.75));
+    const rawScore = 1.0 + normCentroid * 5.5 + normHf * 3.5;
+    score = parseFloat(Math.min(10.0, Math.max(1.0, rawScore)).toFixed(1));
+
+    if (score <= 3.2) {
+      category = 'smooth_surfaces';
+      descriptor = 'Smooth Tactile Surface / Minimal Asperities';
+      dampingRatio = '0.35 ζ';
+    } else if (score <= 6.5) {
+      category = 'natural_grains';
+      descriptor = 'Tactile Texture / Moderate Stick-Slip Friction';
+      dampingRatio = '0.18 ζ';
+    } else {
+      category = 'abrasives';
+      descriptor = 'High-Friction Rough Asperities / Micro-Acoustic Bursts';
+      dampingRatio = '0.08 ζ';
+    }
+    dominantHz = Math.round(centroid);
+  } else {
+    // Density: Vibro-acoustic boundary coupling impedance over continuous excitation
+    // Coupling factor derived from received audio dBFS and harmonic damping
+    const couplingPower = Math.min(1.0, Math.max(0.0, (avgDb + 65) / 35));
+    score = parseFloat((1.2 + couplingPower * 8.2).toFixed(1));
+    dominantHz = 180;
+    if (score <= 2.5) {
+      category = 'cellular_low_density';
+      descriptor = 'Compliant Low-Density Matrix / Cellular Attenuation';
+      impedance = '1.8 × 10⁵ kg/(m²·s)';
+      dampingRatio = '0.42 ζ';
+    } else if (score <= 6.0) {
+      category = 'medium_density';
+      descriptor = 'Medium Density Solid / Moderate Acoustic Coupling';
+      impedance = '2.4 × 10⁶ kg/(m²·s)';
+      dampingRatio = '0.16 ζ';
+    } else {
+      category = 'heavy_dense_solid';
+      descriptor = 'Dense Solid / High Boundary Mechanical Impedance';
+      impedance = '8.5 × 10⁶ kg/(m²·s)';
+      dampingRatio = '0.06 ζ';
     }
   }
 
-  // Micro-adjustment based on real-time signal dynamics (within ±0.4 to keep it grounded in reality)
-  let adjustedScore = baseScore;
-  if (signals?.avgDb !== undefined && signals.avgDb > -80) {
-    const energyDelta = Math.max(-0.4, Math.min(0.4, (signals.avgDb + 45) * 0.02));
-    adjustedScore = parseFloat((adjustedScore + energyDelta).toFixed(1));
-  }
-  // Clamp within 1.0 - 10.0
-  const finalScore = Math.max(1.0, Math.min(10.0, parseFloat(adjustedScore.toFixed(1))));
+  score = Math.max(1.0, Math.min(10.0, parseFloat(score.toFixed(1))));
 
-  const summary = mode === 'hardness'
-    ? `Acoustic contact impact on ${objectName || 'sample'} produced resonant harmonic at ${dominantHz} Hz with damping ratio ${dampingRatio}.`
-    : mode === 'texture'
-    ? `Sliding contact across ${objectName || 'sample'} detected acoustic friction spectrum centered around ${dominantHz} Hz.`
-    : `Continuous vibration transmission through ${objectName || 'sample'} demonstrated mechanical boundary impedance of ${impedance}.`;
+  const summary = activeMode === 'hardness'
+    ? `Acoustic impact transient at ${dominantHz} Hz with ${viscoLag.toFixed(1)} ms viscoelastic delay (damping ratio: ${dampingRatio}).`
+    : activeMode === 'texture'
+    ? `Tribological acoustic friction spectrum centered at ${dominantHz} Hz with ${(hfRatio * 100).toFixed(0)}% high-frequency energy.`
+    : `Continuous vibration coupling impedance at ${dominantHz} Hz demonstrated mechanical boundary factor ${impedance}.`;
 
   return {
-    score: finalScore,
+    score,
     descriptor,
     spectrumSummary: summary,
     dominantHarmonic: `${dominantHz} Hz`,

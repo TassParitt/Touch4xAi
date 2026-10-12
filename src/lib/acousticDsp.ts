@@ -209,114 +209,48 @@ export function analyzeAudioSignalAndSpectrum(
     const normHfer = Math.min(1.0, Math.max(0.0, highFreqEnergyRatio / 0.70));
     const normRms = Math.min(1.0, Math.max(0.0, (rmsDb + 65) / 35));
 
-    if (lowerName.includes('sponge') || lowerName.includes('soft sponge')) {
-      score = 2.4;
-      descriptor = 'Cellular Soft Elastomer / Low Micro-Friction';
-      summary = 'High compliance cellular structure damps stick-slip acoustic bursts.';
-      dampingRatio = '0.45 ζ';
-    } else if (lowerName.includes('table') || lowerName.includes('wood') || lowerName.includes('oak')) {
-      score = 5.4;
-      descriptor = 'Satin Lacquered Timber / Satin Grain';
-      summary = 'Characteristic timber acoustic resonance with moderate friction asperities.';
-      dampingRatio = '0.14 ζ';
-    } else if (lowerName.includes('glass') || lowerName.includes('mirror')) {
-      score = 1.0;
-      descriptor = 'Specular Mirror Glass / Zero Roughness';
-      summary = 'Continuous low-amplitude pink noise with uniform power distribution.';
-      dampingRatio = '0.04 ζ';
-    } else if (lowerName.includes('sandpaper') || lowerName.includes('grit') || lowerName.includes('abrasive')) {
-      score = 9.8;
-      descriptor = 'Rough Sandpaper (P40-120) / Extreme Friction';
-      summary = 'High-frequency micro-cutting acoustic bursts with high spectral centroid.';
-      dampingRatio = '0.24 ζ';
-    } else {
-      const raw = 1.0 + (normCentroid * 0.45 + normHfer * 0.35 + normRms * 0.20) * 9.0;
-      score = parseFloat(Math.min(10.0, Math.max(1.0, raw)).toFixed(1));
-      descriptor =
-        score <= 2.0 ? 'Mirror Smooth / Specular Plane' :
-        score <= 4.0 ? 'Fine Polished / Low Friction' :
-        score <= 6.5 ? 'Medium Texture / Satin Grain' :
-        score <= 8.5 ? 'Coarse Granular / Abrasive Twill' :
-        'Rough Sandpaper (120-Grit) / Heavy Asperities';
-      summary = `Tribological acoustic friction analysis: spectral centroid at ${spectralCentroid} Hz with ${(highFreqEnergyRatio * 100).toFixed(0)}% high-frequency content.`;
-      dampingRatio = `${(0.05 + (1.0 - normCentroid) * 0.3).toFixed(2)} ζ`;
-    }
+    const raw = 1.0 + (normCentroid * 0.45 + normHfer * 0.35 + normRms * 0.20) * 9.0;
+    score = parseFloat(Math.min(10.0, Math.max(1.0, raw)).toFixed(1));
+    descriptor =
+      score <= 2.2 ? 'Specular Smooth / Low Micro-Friction' :
+      score <= 3.8 ? 'Fine Tactile Surface / Supple Grain' :
+      score <= 6.5 ? 'Medium Texture / Satin Grain' :
+      score <= 8.5 ? 'Coarse Granular / Abrasive Twill' :
+      'Rough Sandpaper (120-Grit) / Heavy Asperities';
+    summary = `Tribological acoustic friction analysis: spectral centroid at ${spectralCentroid} Hz with ${(highFreqEnergyRatio * 100).toFixed(0)}% high-frequency content.`;
+    dampingRatio = `${(0.05 + (1.0 - normCentroid) * 0.3).toFixed(2)} ζ`;
   } else if (mode === 'hardness') {
     // Hertzian Contact Impulse Mechanics (Tapping)
-    // Soft (Soft Sponge) = Peak -64 dB, long contact time >15 ms, low crest factor, Q < 2 -> 1.0 - 2.5
-    // Hard (Hard Wood Table) = Peak -31 dB, contact time ~2.4 ms, crest factor > 8.5 -> 6.8 - 7.5
-    // Superhard (Metal/Glass/Diamond) = Peak > -25 dB, sub-ms contact < 1.5 ms -> 9.0 - 10.0
     const normPeakDb = Math.min(1.0, Math.max(0.0, (peakDb + 70) / 45)); // -70 dB -> 0, -25 dB -> 1
-    const normContactTime = Math.min(1.0, Math.max(0.0, (22 - contactDurationMs) / 20)); // 22 ms -> 0, 2 ms -> 1
+    const normContactTime = Math.min(1.0, Math.max(0.0, (25 - contactDurationMs) / 23)); // 25 ms -> 0, 2 ms -> 1
     const normCrest = Math.min(1.0, Math.max(0.0, (crestFactor - 1.5) / 9.5)); // 1.5 -> 0, 11 -> 1
     const normQ = Math.min(1.0, Math.max(0.0, (qualityFactorQ - 1.0) / 12.0));
 
-    if (lowerName.includes('sponge') || lowerName.includes('soft sponge')) {
-      score = 1.8;
-      descriptor = 'Viscoelastic Sponge / High Damping Absorption';
-      summary = 'Massive structural damping (contact duration ~18 ms) suppressing acoustic rebound to -64 dB.';
-      dampingRatio = '0.52 ζ';
-    } else if (lowerName.includes('table') || lowerName.includes('wood') || lowerName.includes('hard wood')) {
-      score = 7.2;
-      descriptor = 'Rigid Hardwood Table / Sharp Contact Impulse';
-      summary = 'Fast Hertzian impact (contact duration ~2.4 ms) generating sharp resonant peaks at -31 dB.';
-      dampingRatio = '0.08 ζ';
-    } else if (lowerName.includes('jelly') || lowerName.includes('gelatin') || lowerName.includes('wax')) {
-      score = 1.2;
-      descriptor = 'Compliant Jelly / Zero Rebound';
-      summary = 'Elastic deformation prolonged contact time with complete acoustic attenuation.';
-      dampingRatio = '0.58 ζ';
-    } else if (lowerName.includes('diamond') || lowerName.includes('steel') || lowerName.includes('metal')) {
-      score = 9.8;
-      descriptor = 'Hardened Steel / High Compressive Modulus';
-      summary = 'Instantaneous momentum transfer with high acoustic reflection and persistent ringing harmonics.';
-      dampingRatio = '0.02 ζ';
-    } else {
-      const raw = 1.0 + (normPeakDb * 0.40 + normContactTime * 0.35 + normCrest * 0.25) * 9.0;
-      score = parseFloat(Math.min(10.0, Math.max(1.0, raw)).toFixed(1));
-      descriptor =
-        score <= 2.2 ? 'Viscoelastic Compliant / High Damping' :
-        score <= 4.5 ? 'Semi-Compliant / Low Stiffness' :
-        score <= 7.5 ? 'Rigid Timber / Solid Elastic Rebound' :
-        score <= 9.0 ? 'High-Stiffness Ceramic / Alloy' :
-        'Superhard Tool Steel / Maximum Modulus';
-      summary = `Hertzian impact mechanics: peak amplitude ${peakDb} dB, contact duration ${contactDurationMs} ms, crest factor ${crestFactor}.`;
-      dampingRatio = `${(0.02 + (1.0 - normPeakDb) * 0.48).toFixed(2)} ζ`;
-    }
+    const raw = 1.0 + (normPeakDb * 0.35 + normContactTime * 0.35 + normCrest * 0.20 + normQ * 0.10) * 9.0;
+    score = parseFloat(Math.min(10.0, Math.max(1.0, raw)).toFixed(1));
+    descriptor =
+      score <= 2.2 ? 'Viscoelastic Compliant / High Mechanical Damping' :
+      score <= 4.5 ? 'Semi-Compliant / Low Stiffness Solid' :
+      score <= 7.5 ? 'Rigid Timber / Solid Elastic Rebound' :
+      score <= 9.0 ? 'High-Stiffness Ceramic / Alloy' :
+      'Superhard Solid / Instantaneous Modulus';
+    summary = `Hertzian impact mechanics: peak amplitude ${peakDb} dB, contact duration ${contactDurationMs} ms, crest factor ${crestFactor}.`;
+    dampingRatio = `${(0.02 + (1.0 - normPeakDb) * 0.48).toFixed(2)} ζ`;
   } else {
     // Density: Vibro-Acoustic Impedance & Coupling (Vibrating)
-    // Low Density (Styrofoam) = low Z, unconstrained motor vibration A(f0), low THD -> 1.0 - 2.0
-    // High Density (Granite/Concrete) = high Z, suppressed motor vibration, elevated THD (>25%) -> 8.5 - 10.0
     const normThd = Math.min(1.0, Math.max(0.0, (thdPercent - 4) / 32));
     const normAtten = Math.min(1.0, Math.max(0.0, (rmsDb + 55) / 35));
 
-    if (lowerName.includes('sponge') || lowerName.includes('styrofoam') || lowerName.includes('foam')) {
-      score = 1.4;
-      descriptor = 'Expanded Low-Density Cellular Matrix';
-      summary = 'Low acoustic impedance boundary reflecting vibration motor waves with minimal chassis loading.';
-      dampingRatio = '0.48 ζ';
-    } else if (lowerName.includes('table') || lowerName.includes('wood') || lowerName.includes('oak')) {
-      score = 6.4;
-      descriptor = 'Solid Wood Core / Moderate Impedance Mass';
-      summary = 'Moderate acoustic impedance coupling mass loading internal vibration motor harmonics.';
-      dampingRatio = '0.12 ζ';
-    } else if (lowerName.includes('granite') || lowerName.includes('rock granite') || lowerName.includes('stone') || lowerName.includes('concrete')) {
-      score = 9.7;
-      descriptor = 'Ultra-Dense Rock Granite Slab';
-      summary = 'High mass density clamping phone chassis and exciting high-order structural harmonics.';
-      dampingRatio = '0.05 ζ';
-    } else {
-      const raw = 1.0 + (normThd * 0.55 + normAtten * 0.45) * 9.0;
-      score = parseFloat(Math.min(10.0, Math.max(1.0, raw)).toFixed(1));
-      descriptor =
-        score <= 2.2 ? 'Porous Cellular / Ultra-Lightweight' :
-        score <= 4.5 ? 'Low-Density Polymer / Light Timber' :
-        score <= 7.2 ? 'Dense Solid Timber / Structural Plastic' :
-        score <= 8.8 ? 'Dense Concrete / Stone Aggregate' :
-        'Ultra-Dense Granite / Structural Metal';
-      summary = `Acoustic impedance coupling: motor excitation at ${f0} Hz, total harmonic distortion ${thdPercent}%.`;
-      dampingRatio = `${(0.05 + (1.0 - normThd) * 0.4).toFixed(2)} ζ`;
-    }
+    const raw = 1.0 + (normThd * 0.55 + normAtten * 0.45) * 9.0;
+    score = parseFloat(Math.min(10.0, Math.max(1.0, raw)).toFixed(1));
+    descriptor =
+      score <= 2.2 ? 'Porous Cellular / Low Acoustic Impedance' :
+      score <= 4.5 ? 'Low-Density Polymer / Light Timber' :
+      score <= 7.2 ? 'Dense Solid Timber / Structural Plastic' :
+      score <= 8.8 ? 'Dense Concrete / Stone Aggregate' :
+      'Ultra-Dense Granite / Structural Metal';
+    summary = `Acoustic impedance coupling: motor excitation at ${f0} Hz, total harmonic distortion ${thdPercent}%.`;
+    dampingRatio = `${(0.05 + (1.0 - normThd) * 0.4).toFixed(2)} ζ`;
   }
 
   const acousticImpedanceZ = mode === 'density'

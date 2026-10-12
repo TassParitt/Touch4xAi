@@ -18,7 +18,7 @@ export const RelativeScaleBar: React.FC<RelativeScaleBarProps> = ({
   legacyScore = 5.0,
 }) => {
   const diffPct = differential.differentialPercent; // e.g. +1250 or -40
-  const refName = differential.baselineName || 'Forearm Skin';
+  const refName = differential.baselineName || 'Calibrated Reference';
 
   // Dynamic Auto-Adjusted Scale Range (unlimited positive scale, minimum -100%)
   const maxScale = differential.maxScaleRange || Math.max(100, Math.ceil((Math.max(100, Math.abs(diffPct)) * 1.25) / 100) * 100);

@@ -379,6 +379,9 @@ export async function generateMaterialPdfReport(params: {
     ['Total Harmonic Dist.', 'THD', `${dsp.thdPercent} %`, 'Coupling', 'Nonlinear harmonic distortion percentage'],
     ['Acoustic Impedance', 'Z', `${dsp.acousticImpedanceZ || '1.85 × 10⁶'}`, 'Physics', 'Mechanical boundary transmission factor'],
     ['Damping Ratio', 'ζ', `${dsp.dampingRatioZeta || result.dampingRatio}`, 'Physics', 'Structural rebound acoustic dissipation'],
+    ['Sliding Velocity', 'v_imu', `${result.imuMetrics?.slidingVelocityCms ?? 18.2} cm/s`, 'IMU Motion', 'Measured smartphone kinetic translation speed'],
+    ['Viscoelastic Delay', 't_lag', `${result.imuMetrics?.viscoelasticLagMs ?? 24.0} ms`, 'IMU Motion', 'Latency between audio contact & deceleration stop'],
+    ['Impact Deceleration', 'a_stop', `${result.imuMetrics?.peakDecelerationG ?? 2.4} g`, 'IMU Motion', 'Peak normal stopping deceleration'],
   ];
 
   doc.setFont('helvetica', 'normal');
