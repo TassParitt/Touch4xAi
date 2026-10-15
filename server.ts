@@ -427,7 +427,7 @@ if (!isProd) {
   const vite = await createServer({
     server: {
       middlewareMode: true,
-      hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
     },
     appType: 'spa',
   });
@@ -438,6 +438,14 @@ if (!isProd) {
     res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
   });
 }
+
+httpServer.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Retrying or waiting for port release...`);
+  } else {
+    console.error('Server error:', err);
+  }
+});
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Touch_AI full-stack server running on http://0.0.0.0:${PORT}`);
