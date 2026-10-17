@@ -23,6 +23,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   const [referenceName, setReferenceName] = useState(activeReference.isCalibrated ? activeReference.name : '');
   const [calibrationMode, setCalibrationMode] = useState<'texture' | 'hardness' | 'density'>('texture');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isNameApplied, setIsNameApplied] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setValidationError(null);
+      setIsNameApplied(false);
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -45,14 +47,16 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   if (!isOpen) return null;
 
   const handleApplyCustomName = () => {
-    const trimmed = referenceName.trim();
-    if (!trimmed) return;
+    const trimmed = referenceName.trim() || '0% Reference Standard';
     const updated: ReferenceProfile = {
       ...activeReference,
       name: trimmed,
+      isCalibrated: true,
     };
     setActiveReference(updated);
     onReferenceChanged(updated);
+    setIsNameApplied(true);
+    setTimeout(() => setIsNameApplied(false), 2000);
   };
 
   /**
@@ -64,6 +68,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
     const blankStandard = getActiveReference();
     setReferenceName('');
     setValidationError(null);
+    setIsNameApplied(false);
     onReferenceChanged(blankStandard);
     // Focus input to refill new object name
     setTimeout(() => {
@@ -72,14 +77,16 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   };
 
   const handleStart = () => {
-    const targetName = referenceName.trim();
-    if (!targetName) {
-      setValidationError('Please enter a reference object name to calibrate.');
-      inputRef.current?.focus();
-      return;
-    }
+    // Make sure Smart Calibration tab always works reliably
+    const targetName = referenceName.trim() || activeReference.name?.trim() || '0% Reference Standard';
     setValidationError(null);
-    handleApplyCustomName();
+    const updated: ReferenceProfile = {
+      ...activeReference,
+      name: targetName,
+      isCalibrated: true,
+    };
+    setActiveReference(updated);
+    onReferenceChanged(updated);
     onStartCalibration(calibrationMode, targetName);
     onClose();
   };
@@ -147,7 +154,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
                 className="px-4 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors disabled:opacity-40 shrink-0 cursor-pointer"
                 title="Enter reference object name"
               >
-                <span>Enter</span>
+                <span>{isNameApplied ? 'Applied ✓' : 'Enter'}</span>
               </button>
             </div>
             {validationError && (
@@ -211,7 +218,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
               </label>
               <span className="text-[11px] font-mono text-slate-500">
                 {calibrationMode === 'hardness' && '3 taps'}
-                {calibrationMode === 'texture' && '3 times'}
+                {calibrationMode === 'texture' && '6 slidings (3 cycles)'}
                 {calibrationMode === 'density' && '6s steady contact'}
               </span>
             </div>

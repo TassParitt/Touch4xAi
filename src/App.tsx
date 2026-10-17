@@ -38,7 +38,7 @@ import { MaterialHeatmap } from './components/MaterialHeatmap';
 import { RelativeScaleBar } from './components/RelativeScaleBar';
 import { CalibrationModal } from './components/CalibrationModal';
 import { CloudflareR2Modal } from './components/CloudflareR2Modal';
-import { getBaselineData, getActiveReference, updateActiveReferenceBaseline } from './lib/calibrationEngine';
+import { getBaselineData, getActiveReference, setActiveReference, updateActiveReferenceBaseline } from './lib/calibrationEngine';
 import {
   detectSmartphone,
   DetectedSmartphone,
@@ -165,7 +165,7 @@ export default function App() {
 
   // Concise user-friendly measuring guides
   const measurementGuides = {
-    texture: 'Slide the smartphone back and forth 3 times across the surface.',
+    texture: 'Slide 6 times (Cycle 1: 2 times, Cycle 2: 2 times, Cycle 3: 2 times).',
     hardness: 'Tap the microphone port firmly against the surface 3 times.',
     density: 'Hold the smartphone microphone against the surface for 6 seconds while vibrating.',
   };
@@ -173,10 +173,11 @@ export default function App() {
   // Measurement finished on Screen 2 -> Automatically bring to Screen 3
   const handleMeasurementComplete = (result: AcousticAnalysisResult) => {
     if (isCalibratingBaseline) {
+      const refName = (activeReference.name || currentObject.name || '0% Reference Standard').trim();
       const updated = updateActiveReferenceBaseline(
         result.mode as 'texture' | 'hardness' | 'density',
         result.score,
-        activeReference.name
+        refName
       );
       setActiveReferenceState(updated);
       setIsCalibratingBaseline(false);
@@ -282,30 +283,73 @@ export default function App() {
               detectedPhoneModel={detectedPhone.fullName}
             />
 
-            {/* Requirement 1: Only ONE tab of calibration before measuring modes.
-                Bigger tabs with bigger text in the tab function.
-                Minimal version without walls of text. */}
-            <div className="w-full bg-white border border-slate-200/90 rounded-2xl p-3 shadow-xs text-left space-y-2.5">
-              <div className="grid grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-2xl">
-                {/* 1. Calibration Tab (First, before measuring modes) */}
-                <button
-                  type="button"
-                  onClick={() => setIsCalibrationModalOpen(true)}
-                  className="py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 bg-white text-slate-900 border border-slate-200/90 shadow-xs hover:bg-slate-50 active:scale-[0.98] cursor-pointer"
-                  title="Open Calibration window (Object name, function, how to, start and reset)"
-                >
-                  <Compass className="w-4 h-4 text-teal-600 shrink-0" />
-                  <span className="truncate">Calibration</span>
-                </button>
+            {/* 1. CALIBRATION TAB (Placed BEFORE the mode selection of texture, hardness, and density) */}
+            <div className="w-full bg-white border border-slate-200/90 rounded-2xl p-3 shadow-xs text-left space-y-2">
+              <div className="flex items-center justify-between px-1 text-xs text-slate-500 font-medium">
+                <span className="uppercase tracking-wider text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+                  <Compass className="w-3.5 h-3.5 text-teal-600" />
+                  Calibration
+                </span>
+                {activeReference.isCalibrated && activeReference.name ? (
+                  <span className="font-mono text-[11px] text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200 font-bold">
+                    0% Ref: {activeReference.name}
+                  </span>
+                ) : (
+                  <span className="font-mono text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300 font-bold">
+                    ⚠️ 0% Ref: Not Calibrated
+                  </span>
+                )}
+              </div>
 
-                {/* 2. Texture Measuring Mode */}
+              {/* Calibration Tab Button */}
+              <button
+                type="button"
+                onClick={() => setIsCalibrationModalOpen(true)}
+                className="w-full py-3.5 px-4 rounded-xl text-sm font-black transition-all flex items-center justify-between bg-slate-900 hover:bg-slate-800 text-white shadow-xs active:scale-[0.99] cursor-pointer"
+                title="Open Calibration window (Set reference object and run Smart Calibration)"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
+                    <Compass className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm">Calibration Tab</span>
+                      <span className="text-[10px] font-mono font-bold bg-teal-500 text-slate-950 px-1.5 py-0.5 rounded">
+                        Smart Calibration
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-300 font-normal">
+                      {activeReference.isCalibrated && activeReference.name
+                        ? `Reference set to "${activeReference.name}" (Tap to Recalibrate)`
+                        : 'Set up 0% reference object & run smart calibration'}
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-teal-400 shrink-0" />
+              </button>
+            </div>
+
+            {/* 2. MODE SELECTION OF TEXTURE, HARDNESS, AND DENSITY (Placed AFTER Calibration) */}
+            <div className="w-full bg-white border border-slate-200/90 rounded-2xl p-3 shadow-xs text-left space-y-2">
+              <div className="flex items-center justify-between px-1 text-xs text-slate-500 font-medium">
+                <span className="uppercase tracking-wider text-[11px] font-bold text-slate-500">
+                  Measuring Mode
+                </span>
+                <span>
+                  Active: <strong className="text-slate-900 uppercase font-bold">{selectedMode}</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+                {/* 1. Texture Measuring Mode */}
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedMode('texture');
                     setIsCalibratingBaseline(false);
                   }}
-                  className={`py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 active:scale-[0.98] cursor-pointer ${
+                  className={`py-3 sm:py-3.5 px-2 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer ${
                     selectedMode === 'texture'
                       ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -314,14 +358,14 @@ export default function App() {
                   <span className="truncate">Texture</span>
                 </button>
 
-                {/* 3. Hardness Measuring Mode */}
+                {/* 2. Hardness Measuring Mode */}
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedMode('hardness');
                     setIsCalibratingBaseline(false);
                   }}
-                  className={`py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 active:scale-[0.98] cursor-pointer ${
+                  className={`py-3 sm:py-3.5 px-2 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer ${
                     selectedMode === 'hardness'
                       ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -330,14 +374,14 @@ export default function App() {
                   <span className="truncate">Hardness</span>
                 </button>
 
-                {/* 4. Density Measuring Mode */}
+                {/* 3. Density Measuring Mode */}
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedMode('density');
                     setIsCalibratingBaseline(false);
                   }}
-                  className={`py-3 sm:py-3.5 px-1.5 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 active:scale-[0.98] cursor-pointer ${
+                  className={`py-3 sm:py-3.5 px-2 rounded-xl text-xs sm:text-sm font-black transition-all text-center flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer ${
                     selectedMode === 'density'
                       ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -345,27 +389,6 @@ export default function App() {
                 >
                   <span className="truncate">Density</span>
                 </button>
-              </div>
-
-              {/* Minimal status bar */}
-              <div className="flex items-center justify-between px-1 text-xs text-slate-500 font-medium">
-                <span>
-                  Mode: <strong className="text-slate-900 uppercase font-bold">{selectedMode}</strong>
-                </span>
-                {activeReference.isCalibrated && activeReference.name ? (
-                  <span className="font-mono text-[11px] text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
-                    0% Ref: {activeReference.name}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsCalibrationModalOpen(true)}
-                    className="font-mono text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300 hover:bg-amber-100 transition-colors font-bold flex items-center gap-1 cursor-pointer"
-                    title="Tap to calibrate reference object"
-                  >
-                    <span>⚠️ 0% Ref: Not Calibrated (Tap to Set Up)</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -717,12 +740,27 @@ export default function App() {
           onClose={() => setIsCalibrationModalOpen(false)}
           activeReference={activeReference}
           onReferenceChanged={(ref) => {
+            setActiveReference(ref);
             setActiveReferenceState(ref);
           }}
           onStartCalibration={(calMode, refName) => {
+            const finalName = (refName || activeReference.name || '0% Reference Standard').trim();
+            const updatedRef: ReferenceProfile = {
+              ...activeReference,
+              name: finalName,
+              isCalibrated: true,
+            };
+            setActiveReference(updatedRef);
+            setActiveReferenceState(updatedRef);
             setSelectedMode(calMode);
             setIsCalibratingBaseline(true);
-            setCurrentObject({ name: refName || 'Reference Standard', material: '', description: '' });
+            setCurrentObject({
+              name: finalName,
+              material: '0% Reference Standard',
+              description: `Calibrating ${finalName} as 0% reference baseline`,
+              deviceModel: detectedPhone.fullName,
+            });
+            setIsCalibrationModalOpen(false);
             setCurrentScreen(2);
           }}
         />

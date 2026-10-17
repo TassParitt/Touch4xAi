@@ -58,7 +58,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
   }, [objectDetails.name]);
 
   // Measurement progression state
-  const [slideCount, setSlideCount] = useState(0); // Measured by MIC: 1 time = forward + stop + backward
+  const [slideCount, setSlideCount] = useState(0); // Measured by MIC: 6 slidings total (3 cycles of 2 slidings)
   const [tapCount, setTapCount] = useState(0); // Measured by MIC: 3 distinct acoustic taps
   const [secondsHeld, setSecondsHeld] = useState(0);
   const [isProcessingFinal, setIsProcessingFinal] = useState(false);
@@ -68,15 +68,15 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
   const [phoneAngleDeg, setPhoneAngleDeg] = useState(0);
   const [phoneDirection, setPhoneDirection] = useState('Stationary');
   const [liveViscoLagMs, setLiveViscoLagMs] = useState(24.0); // Real viscoelastic contact delay in ms
-  const [textureCycleSubStep, setTextureCycleSubStep] = useState<'forward' | 'stop' | 'backward' | 'done'>('forward');
 
   // Contact latency recording
   const recordedViscoLagsRef = useRef<number[]>([]);
   const tapAudioTimeRef = useRef<number>(0);
 
-  // Texture sliding acoustic cycle state machine (MIC-driven: forward -> stop -> backward -> stop = 1 time)
-  const textureCyclePhaseRef = useRef<'await_forward' | 'sliding_forward' | 'stopped_turn' | 'sliding_backward'>('await_forward');
-  const lastStateChangeTimeRef = useRef<number>(0);
+  // Texture sliding acoustic detector: counts 6 slidings using microphone signal
+  const inSlideStrokeRef = useRef<boolean>(false);
+  const slideStartTimeRef = useRef<number>(0);
+  const lastSlideEndTimeRef = useRef<number>(0);
 
   // Live telemetry metrics
   const [dominantFreq, setDominantFreq] = useState(1280);
@@ -374,41 +374,26 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
       // Audio Event Detectors (MIC-DRIVEN)
       const now = performance.now();
       if (mode === 'texture') {
-        // Requirement 3: Microphone measures sliding back and forth for 3 times
-        // 1 time = slide forward + stop + slide backward
-        const isFrictionSound = avgVal > 30; // micro-acoustic friction detected above noise floor
-        const isQuiet = avgVal < 20; // stop/silence
+        // Use audio signal to count the times of sliding: 6 times total (3 cycles of 2 slidings)
+        const isFrictionSound = avgVal > 26; // micro-acoustic friction detected above noise floor
+        const isQuiet = avgVal < 19;
 
-        if (textureCyclePhaseRef.current === 'await_forward') {
-          if (isFrictionSound && now - lastStateChangeTimeRef.current > 250) {
-            textureCyclePhaseRef.current = 'sliding_forward';
-            lastStateChangeTimeRef.current = now;
-            setTextureCycleSubStep('forward');
+        if (!inSlideStrokeRef.current) {
+          if (isFrictionSound && now - lastSlideEndTimeRef.current > 200) {
+            inSlideStrokeRef.current = true;
+            slideStartTimeRef.current = now;
           }
-        } else if (textureCyclePhaseRef.current === 'sliding_forward') {
-          if (isQuiet && now - lastStateChangeTimeRef.current > 160) {
-            textureCyclePhaseRef.current = 'stopped_turn';
-            lastStateChangeTimeRef.current = now;
-            setTextureCycleSubStep('stop');
-          }
-        } else if (textureCyclePhaseRef.current === 'stopped_turn') {
-          if (isFrictionSound && now - lastStateChangeTimeRef.current > 180) {
-            textureCyclePhaseRef.current = 'sliding_backward';
-            lastStateChangeTimeRef.current = now;
-            setTextureCycleSubStep('backward');
-          }
-        } else if (textureCyclePhaseRef.current === 'sliding_backward') {
-          if (isQuiet && now - lastStateChangeTimeRef.current > 160) {
-            // Completed 1 full cycle: forward + stop + backward = 1 time!
-            textureCyclePhaseRef.current = 'await_forward';
-            lastStateChangeTimeRef.current = now;
-            setTextureCycleSubStep('done');
+        } else {
+          // Sliding stroke in progress; detect completion when sound diminishes or duration threshold met
+          if ((isQuiet && now - slideStartTimeRef.current > 140) || (now - slideStartTimeRef.current > 650)) {
+            inSlideStrokeRef.current = false;
+            lastSlideEndTimeRef.current = now;
             setSlideCount((c) => {
               const next = c + 1;
-              if (next >= 3) {
+              if (next >= 6) {
                 setTimeout(() => finishMeasurement(next, 0, 0), 250);
               }
-              return next;
+              return Math.min(6, next);
             });
           }
         }
@@ -570,7 +555,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         avgDb: currentDb,
         modeSpecificMetric: {
           label: mode === 'texture' ? 'Slide Times (MIC)' : mode === 'hardness' ? 'Taps (MIC)' : 'Hold Duration',
-          value: mode === 'texture' ? `${Math.max(3, slides || slideCount)}/3` : mode === 'hardness' ? `${Math.max(3, taps || tapCount)}/3` : `${(holdSec || secondsHeld).toFixed(1)}s`,
+          value: mode === 'texture' ? `${Math.max(6, slides || slideCount)}/6` : mode === 'hardness' ? `${Math.max(3, taps || tapCount)}/3` : `${(holdSec || secondsHeld).toFixed(1)}s`,
         },
         spectrumData: lastFreqSnapshotRef.current,
         deviceModel: resolvedDeviceModel,
@@ -641,7 +626,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
         avgDb: currentDb,
         modeSpecificMetric: {
           label: mode === 'texture' ? 'Slide Times (MIC)' : mode === 'hardness' ? 'Taps (MIC)' : 'Hold Time',
-          value: mode === 'texture' ? '3/3' : mode === 'hardness' ? '3/3' : '6.0s',
+          value: mode === 'texture' ? '6/6' : mode === 'hardness' ? '3/3' : '6.0s',
         },
         spectrumData: lastFreqSnapshotRef.current,
         deviceModel: objectDetails.deviceModel || detectedPhoneModel || 'Smartphone Acoustic Sensor',
@@ -670,9 +655,9 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
   // Manual trigger button for instant testing or touch simulation
   const handleSimulateCycle = () => {
     if (mode === 'texture') {
-      const next = slideCount + 1;
+      const next = Math.min(6, slideCount + 1);
       setSlideCount(next);
-      if (next >= 3) finishMeasurement(next, 0, 0);
+      if (next >= 6) finishMeasurement(next, 0, 0);
     } else if (mode === 'hardness') {
       const next = tapCount + 1;
       setTapCount(next);
@@ -684,7 +669,7 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
   const progressPercent =
     mode === 'texture'
-      ? (slideCount / 3) * 100
+      ? (slideCount / 6) * 100
       : mode === 'hardness'
       ? (tapCount / 3) * 100
       : (secondsHeld / 6.0) * 100;
@@ -791,12 +776,12 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
             <div className="text-left">
               <span className="text-xs font-bold text-slate-900 block leading-tight">
-                {mode === 'texture' && 'Microphone: Slide 3 Times Back & Forth'}
+                {mode === 'texture' && 'Microphone: Slide 6 Times across Surface'}
                 {mode === 'hardness' && 'Microphone: Tap Object 3 Times'}
                 {mode === 'density' && 'Hold Steady on Surface (6s Vibration)'}
               </span>
               <span className="text-[11px] text-slate-500">
-                {mode === 'texture' && '1 time = Slide forward + Stop + Slide backward'}
+                {mode === 'texture' && 'Cycle 1 (2 times) · Cycle 2 (2 times) · Cycle 3 (2 times)'}
                 {mode === 'hardness' && `Viscoelastic Latency: ${liveViscoLagMs.toFixed(1)} ms (Audio vs Accel stop)`}
                 {mode === 'density' && `${secondsHeld.toFixed(1)}s of 6.0s elapsed (vibrating)`}
               </span>
@@ -805,58 +790,147 @@ export const AudioFourierVisualizer: React.FC<AudioFourierVisualizerProps> = ({
 
           <div className="text-right">
             <span className="text-lg font-bold font-mono text-slate-900 tabular-nums">
-              {mode === 'texture' && `${slideCount}/3 times`}
+              {mode === 'texture' && `${slideCount}/6 slidings`}
               {mode === 'hardness' && `${tapCount}/3 taps`}
               {mode === 'density' && `${secondsHeld.toFixed(1)}s / 6s`}
             </span>
           </div>
         </div>
 
-        {/* Texture: 3 Times Sliding Stepper + Sub-step breakdown */}
+        {/* Texture: 3 Cycles of 2 Slidings (6 Slidings Total) */}
         {mode === 'texture' && (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { step: 1, label: 'Time 1' },
-                { step: 2, label: 'Time 2' },
-                { step: 3, label: 'Time 3' },
-              ].map((p) => (
-                <div
-                  key={p.step}
-                  className={`p-2 rounded-xl border text-center transition-all ${
-                    slideCount >= p.step
-                      ? 'bg-teal-600 text-white border-teal-600 font-bold shadow-2xs'
-                      : slideCount === p.step - 1
-                      ? 'bg-teal-50 text-teal-800 border-teal-300 font-semibold animate-pulse'
-                      : 'bg-slate-50 text-slate-400 border-slate-200'
-                  }`}
-                >
-                  <div className="text-[10px] font-mono leading-none">Cycle {p.step}</div>
-                  <div className="text-xs font-bold mt-1 leading-none">{p.label}</div>
+              {/* Cycle 1: sliding two times */}
+              <div
+                className={`p-2.5 rounded-xl border text-center transition-all ${
+                  slideCount >= 2
+                    ? 'bg-teal-600 text-white border-teal-600 font-bold shadow-2xs'
+                    : slideCount >= 0 && slideCount < 2
+                    ? 'bg-teal-50 text-teal-900 border-teal-300 font-semibold'
+                    : 'bg-slate-50 text-slate-400 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] font-mono mb-1">
+                  <span>Cycle 1</span>
+                  <span>{Math.min(2, slideCount)}/2</span>
                 </div>
-              ))}
+                <div className="text-xs font-bold">2 Slidings</div>
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                      slideCount >= 1
+                        ? slideCount >= 2 ? 'bg-white text-teal-800' : 'bg-teal-600 text-white'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    1
+                  </span>
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                      slideCount >= 2
+                        ? 'bg-white text-teal-800'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    2
+                  </span>
+                </div>
+              </div>
+
+              {/* Cycle 2: sliding another two times */}
+              <div
+                className={`p-2.5 rounded-xl border text-center transition-all ${
+                  slideCount >= 4
+                    ? 'bg-teal-600 text-white border-teal-600 font-bold shadow-2xs'
+                    : slideCount >= 2 && slideCount < 4
+                    ? 'bg-teal-50 text-teal-900 border-teal-300 font-semibold'
+                    : 'bg-slate-50 text-slate-400 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] font-mono mb-1">
+                  <span>Cycle 2</span>
+                  <span>{Math.max(0, Math.min(2, slideCount - 2))}/2</span>
+                </div>
+                <div className="text-xs font-bold">2 Slidings</div>
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                      slideCount >= 3
+                        ? slideCount >= 4 ? 'bg-white text-teal-800' : 'bg-teal-600 text-white'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    3
+                  </span>
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                      slideCount >= 4
+                        ? 'bg-white text-teal-800'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    4
+                  </span>
+                </div>
+              </div>
+
+              {/* Cycle 3: sliding another two times */}
+              <div
+                className={`p-2.5 rounded-xl border text-center transition-all ${
+                  slideCount >= 6
+                    ? 'bg-teal-600 text-white border-teal-600 font-bold shadow-2xs'
+                    : slideCount >= 4 && slideCount < 6
+                    ? 'bg-teal-50 text-teal-900 border-teal-300 font-semibold'
+                    : 'bg-slate-50 text-slate-400 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] font-mono mb-1">
+                  <span>Cycle 3</span>
+                  <span>{Math.max(0, Math.min(2, slideCount - 4))}/2</span>
+                </div>
+                <div className="text-xs font-bold">2 Slidings</div>
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                      slideCount >= 5
+                        ? slideCount >= 6 ? 'bg-white text-teal-800' : 'bg-teal-600 text-white'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    5
+                  </span>
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                      slideCount >= 6
+                        ? 'bg-white text-teal-800'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    6
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Current Cycle Sub-Phase Indicator */}
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 font-mono">Current MIC Action:</span>
-              <div className="flex items-center gap-1.5 font-bold">
-                <span className={`px-2 py-0.5 rounded-md ${
-                  textureCycleSubStep === 'forward' ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  1. Forward
-                </span>
-                <span className={`px-2 py-0.5 rounded-md ${
-                  textureCycleSubStep === 'stop' ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  2. Stop
-                </span>
-                <span className={`px-2 py-0.5 rounded-md ${
-                  textureCycleSubStep === 'backward' ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  3. Backward
-                </span>
-              </div>
+            {/* Quick Trigger Button */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-slate-500 font-mono">
+                {slideCount < 2
+                  ? 'Cycle 1: 2 slidings'
+                  : slideCount < 4
+                  ? 'Cycle 2: 2 slidings'
+                  : slideCount < 6
+                  ? 'Cycle 3: 2 slidings'
+                  : '6 slidings completed'}
+              </span>
+              <button
+                type="button"
+                onClick={handleSimulateCycle}
+                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 transition-colors cursor-pointer"
+              >
+                +1 Slide (Test Trigger)
+              </button>
             </div>
           </div>
         )}

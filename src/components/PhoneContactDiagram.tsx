@@ -439,7 +439,7 @@ export const PhoneContactDiagram: React.FC<PhoneContactDiagramProps> = ({ mode }
       <div className="w-full mt-2.5 text-center text-xs text-slate-600">
         {mode === 'texture' && (
           <p className="font-medium text-slate-700">
-            Hold smartphone <strong className="text-teal-700">vertically</strong> and slide bottom microphone port back and forth horizontally across the surface 3 times. Make sure battery is sufficient.
+            Hold smartphone <strong className="text-teal-700">vertically</strong> and slide bottom microphone port across the surface 6 times (Cycle 1: 2 times, Cycle 2: 2 times, Cycle 3: 2 times). Make sure battery is sufficient.
           </p>
         )}
         {mode === 'hardness' && (
